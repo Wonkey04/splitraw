@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #0b0f14;
+  color: #f9fafb;
+}
+
+/* Shared form control styling so inputs look consistent across pages. */
+.input-field {
+  @apply w-full rounded border border-gray-700 bg-bg-secondary px-3 py-2 text-text-primary placeholder-text-secondary outline-none focus:border-primary;
+}
+
+.btn-primary {
+  @apply rounded bg-primary px-4 py-2 font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.card {
+  @apply rounded border border-gray-800 bg-bg-secondary p-6;
+}

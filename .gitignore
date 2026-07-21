@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Env vars (NUNCA subir esto)
+.env
+.env.local
+**/.env.local
+**/.env
+
+# Next.js
+.next/
+**/.next/
+out/
+
+# Expo
+.expo/
+**/.expo/
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+.claude/
+
+# Build
+build/
+dist/
