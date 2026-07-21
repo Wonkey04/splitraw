@@ -1,129 +1,103 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { DAYS_OF_WEEK } from "@/lib/constants";
 import { useUserProfile } from "@/lib/context/UserProfileContext";
-import type { ExerciseCatalog } from "@/lib/types";
-
-interface CellData {
-  sets: number;
-  reps: number;
-  weight: number;
-}
+import ExerciseSelector, { type ExerciseSelectorResult } from "@/components/ExerciseSelector";
+import ValueEditor, { type ValueEditorResult } from "@/components/ValueEditor";
 
 interface Row {
   rowId: string;
   catalogId: string;
-  cells: Record<number, CellData>;
+  catalogName: string;
+  muscleGroupName: string;
+  cells: Record<number, ValueEditorResult>;
 }
 
-function emptyRow(): Row {
-  return { rowId: crypto.randomUUID(), catalogId: "", cells: {} };
-}
+// Que popover esta abierto: "new" es la cascada para una fila nueva
+// (dispara desde el "+" de la fila de abajo), "edit" es el popover liviano
+// de solo valores para una celda de una fila que ya tiene ejercicio.
+type PopoverState =
+  | { type: "new"; day: number; anchor: { x: number; y: number } }
+  | { type: "edit"; rowId: string; day: number; anchor: { x: number; y: number } }
+  | null;
 
 // Pagina unica para crear una rutina: nombre + descripcion arriba, tabla
-// ejercicio x dia en el medio. Filas se agregan a mano, cada celda se
-// carga con un popup (sets/reps/peso). Todo se guarda junto al final.
+// ejercicio x dia en el medio. Las filas se crean via cascada Grupo
+// Muscular -> Ejercicio (ExerciseSelector); las celdas de una fila que ya
+// tiene ejercicio se cargan/editan con un popover liviano (ValueEditor).
+// Todo se guarda junto recien al click en "Guardar Rutina".
 export default function CreateRoutinePage() {
   const router = useRouter();
   const { profile } = useUserProfile();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [rows, setRows] = useState<Row[]>([emptyRow()]);
-  const [catalog, setCatalog] = useState<ExerciseCatalog[]>([]);
-
-  const [modalCell, setModalCell] = useState<{ rowId: string; day: number } | null>(null);
-  const [modalSets, setModalSets] = useState("");
-  const [modalReps, setModalReps] = useState("");
-  const [modalWeight, setModalWeight] = useState("");
-  const [modalError, setModalError] = useState<string | null>(null);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [popover, setPopover] = useState<PopoverState>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    supabase
-      .from("exercise_catalog")
-      .select("*")
-      .order("muscle_group_id")
-      .then(({ data }) => setCatalog((data as ExerciseCatalog[]) ?? []));
-  }, []);
-
-  function updateRowCatalog(rowId: string, catalogId: string) {
-    setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, catalogId } : r)));
+  function openNewPopover(day: number, e: React.MouseEvent) {
+    setPopover({ type: "new", day, anchor: { x: e.clientX, y: e.clientY } });
   }
 
-  function addRow() {
-    setRows((prev) => [...prev, emptyRow()]);
+  function openEditPopover(rowId: string, day: number, e: React.MouseEvent) {
+    setPopover({ type: "edit", rowId, day, anchor: { x: e.clientX, y: e.clientY } });
+  }
+
+  function closePopover() {
+    setPopover(null);
+  }
+
+  // La cascada puede resolver a una fila que YA existe (mismo ejercicio en
+  // otra celda) para no duplicar filas del mismo ejercicio.
+  function handleCascadeAdd(result: ExerciseSelectorResult) {
+    setRows((prev) => {
+      const existing = prev.find((r) => r.catalogId === result.catalogId);
+      if (existing) {
+        return prev.map((r) =>
+          r.rowId === existing.rowId
+            ? { ...r, cells: { ...r.cells, [result.day]: { sets: result.sets, reps: result.reps, weight: result.weight } } }
+            : r
+        );
+      }
+      return [
+        ...prev,
+        {
+          rowId: crypto.randomUUID(),
+          catalogId: result.catalogId,
+          catalogName: result.catalogName,
+          muscleGroupName: result.muscleGroupName,
+          cells: { [result.day]: { sets: result.sets, reps: result.reps, weight: result.weight } },
+        },
+      ];
+    });
+    closePopover();
+  }
+
+  function handleEditSave(rowId: string, day: number, values: ValueEditorResult) {
+    setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, cells: { ...r.cells, [day]: values } } : r)));
+    closePopover();
+  }
+
+  function handleEditRemove(rowId: string, day: number) {
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.rowId !== rowId) return r;
+        const nextCells = { ...r.cells };
+        delete nextCells[day];
+        return { ...r, cells: nextCells };
+      })
+    );
+    closePopover();
   }
 
   function removeRow(rowId: string) {
     setRows((prev) => prev.filter((r) => r.rowId !== rowId));
-  }
-
-  function openModal(rowId: string, day: number) {
-    const row = rows.find((r) => r.rowId === rowId);
-    const existing = row?.cells[day];
-    setModalCell({ rowId, day });
-    setModalSets(existing ? String(existing.sets) : "");
-    setModalReps(existing ? String(existing.reps) : "");
-    setModalWeight(existing ? String(existing.weight) : "");
-    setModalError(null);
-  }
-
-  function closeModal() {
-    setModalCell(null);
-  }
-
-  function handleModalSave() {
-    if (!modalCell) return;
-    const row = rows.find((r) => r.rowId === modalCell.rowId);
-    if (!row?.catalogId) {
-      setModalError("Elegí un ejercicio para esta fila primero.");
-      return;
-    }
-
-    const setsNum = Number(modalSets);
-    const repsNum = Number(modalReps);
-    const weightNum = Number(modalWeight);
-
-    if (!Number.isInteger(setsNum) || setsNum <= 0) {
-      setModalError("Sets debe ser un número entero positivo.");
-      return;
-    }
-    if (!Number.isInteger(repsNum) || repsNum <= 0) {
-      setModalError("Reps debe ser un número entero positivo.");
-      return;
-    }
-    if (Number.isNaN(weightNum) || weightNum < 0) {
-      setModalError("El peso debe ser un número válido.");
-      return;
-    }
-
-    setRows((prev) =>
-      prev.map((r) =>
-        r.rowId === modalCell.rowId
-          ? { ...r, cells: { ...r.cells, [modalCell.day]: { sets: setsNum, reps: repsNum, weight: weightNum } } }
-          : r
-      )
-    );
-    closeModal();
-  }
-
-  function handleModalRemove() {
-    if (!modalCell) return;
-    setRows((prev) =>
-      prev.map((r) => {
-        if (r.rowId !== modalCell.rowId) return r;
-        const nextCells = { ...r.cells };
-        delete nextCells[modalCell.day];
-        return { ...r, cells: nextCells };
-      })
-    );
-    closeModal();
   }
 
   async function handleSaveRoutine() {
@@ -138,7 +112,7 @@ export default function CreateRoutinePage() {
       return;
     }
 
-    const usableRows = rows.filter((r) => r.catalogId && Object.keys(r.cells).length > 0);
+    const usableRows = rows.filter((r) => Object.keys(r.cells).length > 0);
     if (usableRows.length === 0) {
       setError("Agregá al menos un ejercicio con algún día cargado.");
       return;
@@ -172,17 +146,16 @@ export default function CreateRoutinePage() {
       return;
     }
 
-    const exerciseRows = usableRows.flatMap((row) => {
-      const catalogItem = catalog.find((c) => c.id === row.catalogId);
-      return Object.entries(row.cells).map(([day, cell]) => ({
+    const exerciseRows = usableRows.flatMap((row) =>
+      Object.entries(row.cells).map(([day, cell]) => ({
         routine_template_id: template.id,
-        name: catalogItem?.name ?? "Ejercicio",
+        name: row.catalogName,
         day_of_week: Number(day),
         target_sets: cell.sets,
         target_reps: cell.reps,
         target_weight_kg: cell.weight,
-      }));
-    });
+      }))
+    );
 
     const { error: exercisesError } = await supabase.from("exercises").insert(exerciseRows);
 
@@ -196,7 +169,8 @@ export default function CreateRoutinePage() {
     router.push(`/dashboard/routines/${template.id}`);
   }
 
-  const modalRow = modalCell ? rows.find((r) => r.rowId === modalCell.rowId) : null;
+  const editingRow = popover?.type === "edit" ? rows.find((r) => r.rowId === popover.rowId) : null;
+  const editingCell = editingRow && popover?.type === "edit" ? editingRow.cells[popover.day] ?? null : null;
 
   return (
     <div>
@@ -241,32 +215,27 @@ export default function CreateRoutinePage() {
                   {d.label.slice(0, 3).toUpperCase()}
                 </th>
               ))}
-              <th className="border-b border-gray-800 px-2 py-2" />
             </tr>
           </thead>
           <tbody>
             {rows.map((row, i) => (
               <tr key={row.rowId} className={i % 2 === 0 ? "" : "bg-bg-secondary/40"}>
-                <td className="border-b border-gray-800 px-2 py-2">
-                  <select
-                    className="input-field"
-                    value={row.catalogId}
-                    onChange={(e) => updateRowCatalog(row.rowId, e.target.value)}
+                <td className="border-b border-gray-800 px-2 py-2 text-sm">
+                  {row.catalogName} <span className="text-text-secondary">({row.muscleGroupName})</span>
+                  <button
+                    className="ml-2 text-xs text-text-secondary hover:text-error"
+                    onClick={() => removeRow(row.rowId)}
+                    title="Quitar fila"
                   >
-                    <option value="">Elegí un ejercicio</option>
-                    {catalog.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                    ✕
+                  </button>
                 </td>
                 {DAYS_OF_WEEK.map((d) => {
                   const cell = row.cells[d.value];
                   return (
                     <td key={d.value} className="border-b border-gray-800 px-2 py-2 text-center">
                       <button
-                        onClick={() => openModal(row.rowId, d.value)}
+                        onClick={(e) => openEditPopover(row.rowId, d.value, e)}
                         className={
                           "w-full rounded border px-2 py-1 text-sm hover:border-primary " +
                           (cell ? "border-primary text-text-primary" : "border-gray-700 text-text-secondary")
@@ -277,86 +246,39 @@ export default function CreateRoutinePage() {
                     </td>
                   );
                 })}
-                <td className="border-b border-gray-800 px-2 py-2">
-                  <button
-                    className="text-sm text-text-secondary hover:text-error"
-                    onClick={() => removeRow(row.rowId)}
-                  >
-                    Quitar
-                  </button>
-                </td>
               </tr>
             ))}
+
+            <tr>
+              <td className="border-b border-gray-800 px-2 py-2 text-sm text-text-secondary">+ Agregar ejercicio</td>
+              {DAYS_OF_WEEK.map((d) => (
+                <td key={d.value} className="border-b border-gray-800 px-2 py-2 text-center">
+                  <button
+                    onClick={(e) => openNewPopover(d.value, e)}
+                    className="w-full rounded border border-dashed border-gray-700 px-2 py-1 text-sm text-text-secondary hover:border-primary hover:text-primary"
+                  >
+                    +
+                  </button>
+                </td>
+              ))}
+            </tr>
           </tbody>
         </table>
       </div>
 
-      <button className="mt-4 text-sm text-primary hover:underline" onClick={addRow}>
-        + Agregar ejercicio
-      </button>
+      {popover?.type === "new" && (
+        <ExerciseSelector anchor={popover.anchor} defaultDay={popover.day} onClose={closePopover} onAdd={handleCascadeAdd} />
+      )}
 
-      {modalCell && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/60 px-4">
-          <div className="card w-full max-w-sm">
-            <h2 className="mb-4 font-semibold">
-              {catalog.find((c) => c.id === modalRow?.catalogId)?.name ?? "Ejercicio"} —{" "}
-              {DAYS_OF_WEEK.find((d) => d.value === modalCell.day)?.label}
-            </h2>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="mb-1 block text-sm text-text-secondary">Sets</label>
-                  <input
-                    type="number"
-                    min={1}
-                    className="input-field"
-                    value={modalSets}
-                    onChange={(e) => setModalSets(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm text-text-secondary">Reps</label>
-                  <input
-                    type="number"
-                    min={1}
-                    className="input-field"
-                    value={modalReps}
-                    onChange={(e) => setModalReps(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm text-text-secondary">Peso (kg)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.5"
-                    className="input-field"
-                    value={modalWeight}
-                    onChange={(e) => setModalWeight(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {modalError && <p className="text-sm text-error">{modalError}</p>}
-
-              <div className="flex gap-3">
-                <button className="btn-primary flex-1" onClick={handleModalSave}>
-                  Guardar
-                </button>
-                <button
-                  className="flex-1 rounded border border-gray-700 py-2 text-sm text-text-secondary hover:border-error hover:text-error"
-                  onClick={handleModalRemove}
-                >
-                  Quitar
-                </button>
-              </div>
-              <button className="w-full text-sm text-text-secondary hover:text-text-primary" onClick={closeModal}>
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
+      {popover?.type === "edit" && editingRow && (
+        <ValueEditor
+          anchor={popover.anchor}
+          title={`${editingRow.catalogName} — ${DAYS_OF_WEEK.find((d) => d.value === popover.day)?.label}`}
+          initial={editingCell}
+          onClose={closePopover}
+          onSave={(values) => handleEditSave(popover.rowId, popover.day, values)}
+          onRemove={() => handleEditRemove(popover.rowId, popover.day)}
+        />
       )}
     </div>
   );

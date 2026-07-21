@@ -31,6 +31,13 @@ export interface ExerciseCatalog {
   created_at?: string;
 }
 
+export interface MuscleGroup {
+  id: number;
+  name: string;
+  description?: string | null;
+  created_at?: string;
+}
+
 export interface RoutineTemplate {
   id: string;
   name: string;
