@@ -1,7 +1,16 @@
 export interface Organization {
   id: string;
   name: string;
+  invitation_code_id?: string | null;
   created_at?: string;
+}
+
+export interface GymInvitationCode {
+  id: string;
+  organization_id: string;
+  code: string;
+  created_at?: string;
+  deleted_at?: string | null;
 }
 
 export interface Branch {

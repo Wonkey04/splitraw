@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { useUserProfile } from "@/lib/context/UserProfileContext";
 
-// Dashboard home: greets the owner and links to the three main flows.
+// Dashboard home: greets the owner y linkea a los tres flujos principales.
+// El codigo de invitacion del gimnasio vive en /dashboard/members.
 export default function DashboardHome() {
   const { user } = useAuth();
   const { profile } = useUserProfile();

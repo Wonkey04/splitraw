@@ -31,18 +31,23 @@ export default function AssignRoutinePage() {
     }
 
     async function loadTemplates() {
-      const { data, error: fetchError } = await supabase
-        .from("routine_templates")
-        .select("*")
-        .eq("organization_id", profile!.organization_id);
+      try {
+        const { data, error: fetchError } = await supabase
+          .from("routine_templates")
+          .select("*")
+          .eq("organization_id", profile!.organization_id);
 
-      if (fetchError) {
+        if (fetchError) {
+          setError("No se pudieron cargar las rutinas.");
+        } else {
+          setTemplates(data as RoutineTemplate[]);
+          if (data && data.length > 0) setSelectedId(data[0].id);
+        }
+      } catch {
         setError("No se pudieron cargar las rutinas.");
-      } else {
-        setTemplates(data as RoutineTemplate[]);
-        if (data && data.length > 0) setSelectedId(data[0].id);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     loadTemplates();
   }, [profile, profileLoading]);

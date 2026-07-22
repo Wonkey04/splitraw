@@ -31,18 +31,23 @@ export default function AssignRoutineToMemberPage() {
     }
 
     async function loadMembers() {
-      const { data, error: fetchError } = await supabase
-        .from("members")
-        .select("*")
-        .eq("organization_id", profile!.organization_id);
+      try {
+        const { data, error: fetchError } = await supabase
+          .from("members")
+          .select("*")
+          .eq("organization_id", profile!.organization_id);
 
-      if (fetchError) {
+        if (fetchError) {
+          setError("No se pudieron cargar los miembros.");
+        } else {
+          setMembers(data as Member[]);
+          if (data && data.length > 0) setSelectedId(data[0].id);
+        }
+      } catch {
         setError("No se pudieron cargar los miembros.");
-      } else {
-        setMembers(data as Member[]);
-        if (data && data.length > 0) setSelectedId(data[0].id);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     loadMembers();
   }, [profile, profileLoading]);

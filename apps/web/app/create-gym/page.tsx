@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { createGymInvitationCode } from "@/lib/invitationCode";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -112,13 +113,22 @@ export default function CreateGymPage() {
       phone: 0,
     });
 
-    setSubmitting(false);
-
     if (profileError) {
+      setSubmitting(false);
       setError("No se pudo crear tu perfil: " + profileError.message);
       return;
     }
 
+    // 5. Auto-genera el codigo de invitacion permanente del gimnasio.
+    // Si falla (ej. RLS), NO bloqueamos el signup: el owner ya quedo creado
+    // y en /members hay un boton de respaldo para generarlo a mano. Solo lo
+    // dejamos registrado en consola para poder debuggear.
+    const { error: codeError } = await createGymInvitationCode(org.id);
+    if (codeError) {
+      console.error("No se pudo auto-generar el código de invitación:", codeError);
+    }
+
+    setSubmitting(false);
     router.push("/dashboard");
   }
 

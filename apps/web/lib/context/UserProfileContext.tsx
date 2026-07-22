@@ -33,17 +33,22 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     }
 
     let cancelled = false;
-    supabase
-      .from("user_profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single()
-      .then(({ data }) => {
-        if (!cancelled) {
-          setProfile(data as UserProfile | null);
-          setLoading(false);
-        }
-      });
+
+    async function loadProfile() {
+      try {
+        const { data } = await supabase.from("user_profiles").select("*").eq("id", user!.id).single();
+        if (!cancelled) setProfile(data as UserProfile | null);
+      } catch {
+        // Si el fetch rechaza (ej. red caida) igual hay que bajar loading:
+        // si no, profileLoading queda en true para siempre y las paginas
+        // que dependen de el (members, routines) quedan trabadas en
+        // "Cargando..." de por vida.
+        if (!cancelled) setProfile(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    loadProfile();
 
     return () => {
       cancelled = true;

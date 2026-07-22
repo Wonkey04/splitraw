@@ -23,18 +23,23 @@ export default function RoutinesListPage() {
     }
 
     async function loadTemplates() {
-      const { data, error: fetchError } = await supabase
-        .from("routine_templates")
-        .select("*")
-        .eq("organization_id", profile!.organization_id)
-        .order("created_at", { ascending: false });
+      try {
+        const { data, error: fetchError } = await supabase
+          .from("routine_templates")
+          .select("*")
+          .eq("organization_id", profile!.organization_id)
+          .order("created_at", { ascending: false });
 
-      if (fetchError) {
+        if (fetchError) {
+          setError("No se pudieron cargar las rutinas.");
+        } else {
+          setTemplates(data as RoutineTemplate[]);
+        }
+      } catch {
         setError("No se pudieron cargar las rutinas.");
-      } else {
-        setTemplates(data as RoutineTemplate[]);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     loadTemplates();
   }, [profile, profileLoading]);
