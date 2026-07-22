@@ -12,7 +12,7 @@ export default function AssignRoutineToMemberPage() {
   const params = useParams<{ id: string }>();
   const templateId = params?.id as string;
   const router = useRouter();
-  const { profile } = useUserProfile();
+  const { profile, loading: profileLoading } = useUserProfile();
 
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -22,7 +22,13 @@ export default function AssignRoutineToMemberPage() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    if (!profile) return;
+    if (profileLoading) return;
+
+    if (!profile) {
+      setError("No se encontró tu perfil. Volvé a loguearte.");
+      setLoading(false);
+      return;
+    }
 
     async function loadMembers() {
       const { data, error: fetchError } = await supabase
@@ -39,7 +45,7 @@ export default function AssignRoutineToMemberPage() {
       setLoading(false);
     }
     loadMembers();
-  }, [profile]);
+  }, [profile, profileLoading]);
 
   async function handleAssign(e: React.FormEvent) {
     e.preventDefault();

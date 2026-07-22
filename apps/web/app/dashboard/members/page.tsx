@@ -9,13 +9,19 @@ import type { Member } from "@/lib/types";
 // Lists all members of la organizacion del usuario logueado, con accion
 // para asignarles una rutina.
 export default function MembersListPage() {
-  const { profile } = useUserProfile();
+  const { profile, loading: profileLoading } = useUserProfile();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!profile) return;
+    if (profileLoading) return;
+
+    if (!profile) {
+      setError("No se encontró tu perfil. Volvé a loguearte.");
+      setLoading(false);
+      return;
+    }
 
     async function loadMembers() {
       const { data, error: fetchError } = await supabase
@@ -31,7 +37,7 @@ export default function MembersListPage() {
       setLoading(false);
     }
     loadMembers();
-  }, [profile]);
+  }, [profile, profileLoading]);
 
   return (
     <div>

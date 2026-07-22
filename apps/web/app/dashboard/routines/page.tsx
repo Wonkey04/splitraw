@@ -8,13 +8,19 @@ import type { RoutineTemplate } from "@/lib/types";
 
 // Lists all routine templates belonging to la organizacion del usuario logueado.
 export default function RoutinesListPage() {
-  const { profile } = useUserProfile();
+  const { profile, loading: profileLoading } = useUserProfile();
   const [templates, setTemplates] = useState<RoutineTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!profile) return;
+    if (profileLoading) return;
+
+    if (!profile) {
+      setError("No se encontró tu perfil. Volvé a loguearte.");
+      setLoading(false);
+      return;
+    }
 
     async function loadTemplates() {
       const { data, error: fetchError } = await supabase
@@ -31,7 +37,7 @@ export default function RoutinesListPage() {
       setLoading(false);
     }
     loadTemplates();
-  }, [profile]);
+  }, [profile, profileLoading]);
 
   return (
     <div>
