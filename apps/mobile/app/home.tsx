@@ -18,8 +18,8 @@ const todayDayOfWeek = getTodayDayOfWeek();
 
 // Pantallas del roadmap: se listan sin onPress hasta que existan (Fase 3/4).
 // Al implementarlas se saca el badge y la opacidad, y se agrega la
-// navegación real.
-const UPCOMING_ITEMS = ["Mis rutinas de la semana", "Mi perfil"];
+// navegación real. "Mi perfil" ya salió de acá: es /profile.
+const UPCOMING_ITEMS = ["Mis rutinas de la semana"];
 
 /** "Hola, Juan" a partir del nombre del member, con el email como respaldo. */
 function displayName(fullName?: string | null, email?: string): string {
@@ -202,6 +202,14 @@ export default function Home() {
 
             <Text style={styles.sectionLabel}>Próximamente</Text>
             <View style={styles.upcomingGroup}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push("/profile")}
+                style={styles.upcomingRow}
+              >
+                <Text style={styles.linkText}>Mi perfil</Text>
+              </Pressable>
+
               {UPCOMING_ITEMS.map((item, index) => (
                 <View
                   key={item}
@@ -399,6 +407,15 @@ const styles = StyleSheet.create({
   upcomingText: {
     ...typography.body,
     color: colors.textPrimary,
+    flex: 1,
+    minWidth: 0,
+  },
+  // Las filas que ya son navegables se distinguen por color, no por icono:
+  // el resto de la lista sigue siendo texto muerto con badge "Pronto".
+  linkText: {
+    ...typography.body,
+    color: colors.accent,
+    fontWeight: "500",
     flex: 1,
     minWidth: 0,
   },

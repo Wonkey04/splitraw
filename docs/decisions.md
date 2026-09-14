@@ -403,3 +403,49 @@ tabla real no lo tiene, la función falla al crearse — es la columna "fecha de
 alta" del listado.
 
 ---
+
+## 2026-09 — Perfil en los tres roles: bucket público, escritura del dueño
+
+Pantalla de Perfil para GYM_OWNER (`/dashboard/profile`), TRAINER
+(`/trainer/profile`) y MEMBER (mobile `/profile`): nombre, apellido y foto.
+Alcance acotado a propósito — email y contraseña no se tocan acá, viven en
+`auth.users` y son otro flujo.
+
+**Bucket `avatars` público de lectura, escritura solo del dueño** (`0012`).
+Público porque la foto se muestra en pantallas donde el que mira no es el
+dueño (el owner ve a sus entrenadores, el trainer a sus alumnos): con un
+bucket privado habría que firmar una URL por foto y por pantalla, y no hay
+nada sensible en un avatar. La escritura se ata a
+`avatars/<auth.uid()>/<archivo>` y las policies comparan la primera carpeta
+del path contra el uid — **la convención de path es parte del permiso**, no
+un detalle de organización.
+
+El nombre del archivo lleva timestamp en vez de ser fijo: pisar el mismo
+objeto deja el CDN devolviendo la foto vieja.
+
+**Editar el propio perfil necesitó una policy nueva** (`user_profiles_update_self`)
+— hasta ahora los perfiles se creaban y nunca se actualizaban. Como una
+policy de UPDATE no puede restringir QUÉ columnas se tocan, un trigger
+bloquea los cambios de `role`, `organization_id` y `branch_id` sobre la
+propia fila: sin eso, cualquiera se ascendía a GYM_OWNER con un UPDATE
+directo por REST.
+
+**El MEMBER no usa ese UPDATE sino la RPC `save_member_profile`**: el socio
+puede no tener fila en `user_profiles` todavía (el signup mobile crea
+`members` y no siempre el perfil — la misma razón de los LEFT JOIN de 0009),
+así que su pantalla a veces tiene que CREAR la fila. Una policy de INSERT no
+alcanza porque no puede fijar el `role`: cualquiera sin perfil se insertaría
+uno con role GYM_OWNER y el `organization_id` de un gimnasio ajeno. En la
+función el rol se fuerza a MEMBER y org/sucursal salen de su propia fila de
+`members`.
+
+**Reusar el componente entre web y mobile no se pudo:** React Native no
+comparte componentes con React DOM y `packages/shared` está vacío. Lo que se
+mantiene en espejo es la LÓGICA (`apps/web/lib/avatar.ts` y
+`apps/mobile/utils/avatar.ts`), igual que ya pasa con `types.ts`. La
+diferencia real entre las dos: en mobile no hay `File` — ImagePicker devuelve
+base64 y Storage necesita bytes, y la conversión se hace a mano porque RN no
+trae `atob` ni `Buffer` y `fetch(file://).arrayBuffer()` no es confiable.
+Dependencia nueva en mobile: `expo-image-picker`.
+
+---

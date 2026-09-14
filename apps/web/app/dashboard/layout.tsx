@@ -98,9 +98,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <NavLink href="/dashboard/members">Miembros</NavLink>
                 <NavLink href="/dashboard/employees">Empleados</NavLink>
               </div>
-              <Button variant="secondary" onClick={handleLogout}>
-                Cerrar sesión
-              </Button>
+              <div className="flex items-center gap-4">
+                <NavLink href="/dashboard/profile">Mi perfil</NavLink>
+                <Button variant="secondary" onClick={handleLogout}>
+                  Cerrar sesión
+                </Button>
+              </div>
             </div>
           </nav>
           <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>

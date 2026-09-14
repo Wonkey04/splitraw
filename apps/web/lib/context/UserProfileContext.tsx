@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/hooks/useAuth";
 import type { UserProfile } from "@/lib/types";
@@ -8,11 +8,18 @@ import type { UserProfile } from "@/lib/types";
 interface UserProfileContextValue {
   profile: UserProfile | null;
   loading: boolean;
+  /**
+   * Vuelve a leer el perfil de la base. Lo usa la pantalla de Perfil despues
+   * de guardar: sin esto, el nav y el resto de las pantallas siguen
+   * mostrando el nombre viejo hasta que el usuario recarga.
+   */
+  refresh: () => Promise<void>;
 }
 
 const UserProfileContext = createContext<UserProfileContextValue>({
   profile: null,
   loading: true,
+  refresh: async () => {},
 });
 
 // Trae el user_profiles del usuario logueado una sola vez y lo comparte
@@ -22,6 +29,21 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
   const { user, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    if (!user) {
+      setProfile(null);
+      return;
+    }
+
+    try {
+      const { data } = await supabase.from("user_profiles").select("*").eq("id", user.id).single();
+      setProfile(data as UserProfile | null);
+    } catch {
+      // Ver el comentario del efecto de abajo: una refresh fallida no puede
+      // borrar el perfil que ya estaba cargado.
+    }
+  }, [user]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -56,7 +78,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
   }, [user, authLoading]);
 
   return (
-    <UserProfileContext.Provider value={{ profile, loading: authLoading || loading }}>
+    <UserProfileContext.Provider value={{ profile, loading: authLoading || loading, refresh }}>
       {children}
     </UserProfileContext.Provider>
   );

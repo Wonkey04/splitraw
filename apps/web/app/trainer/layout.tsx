@@ -91,9 +91,12 @@ export default function TrainerLayout({ children }: { children: React.ReactNode 
                 </Link>
                 <NavLink href="/trainer">Panel</NavLink>
               </div>
-              <Button variant="secondary" onClick={handleLogout}>
-                Cerrar sesión
-              </Button>
+              <div className="flex items-center gap-4">
+                <NavLink href="/trainer/profile">Mi perfil</NavLink>
+                <Button variant="secondary" onClick={handleLogout}>
+                  Cerrar sesión
+                </Button>
+              </div>
             </div>
           </nav>
           <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>

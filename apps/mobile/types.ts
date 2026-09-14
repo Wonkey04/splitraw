@@ -32,6 +32,8 @@ export interface UserProfile {
   name: string;
   surname?: string | null;
   phone?: number | null;
+  /** Foto de perfil: URL publica del bucket `avatars` (0012). */
+  avatar_url?: string | null;
   created_at?: string;
 }
 
