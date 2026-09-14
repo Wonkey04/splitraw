@@ -449,3 +449,41 @@ trae `atob` ni `Buffer` y `fetch(file://).arrayBuffer()` no es confiable.
 Dependencia nueva en mobile: `expo-image-picker`.
 
 ---
+
+## 2026-09 — Expiración de sesión: 12 horas, chequeada en el cliente
+
+Supabase renueva el access token solo cada hora, así que hoy una sesión vive
+indefinidamente mientras se siga abriendo la app. En una compu del mostrador
+del gimnasio eso es una cuenta abierta para siempre.
+
+**Cuánto:** 12 horas, no los 3 días que decía el brief — se acortó a pedido
+del dueño del producto ("que sean horas"). Con 12 h, quien entrena a la
+mañana y vuelve a la tarde sigue logueado, y una sesión abierta de noche no
+llega al día siguiente. El número es UNA constante
+(`SESSION_MAX_AGE_HOURS`) en cada app.
+
+**Dónde:** en el hook `useAuth` de las dos apps, que es por donde pasan las
+tres superficies (`/dashboard`, `/trainer` y mobile). Al abrir, si la sesión
+es vieja se hace `signOut()` y la app cae sola al login por el guard que ya
+existía. En mobile además se limpia el contexto de gym cacheado, para que el
+próximo login no arranque con la organización del usuario anterior.
+
+**De dónde sale la fecha de login:** de `user.last_sign_in_at`, con un
+timestamp propio guardado (localStorage / AsyncStorage) como respaldo. **No**
+del `iat` del JWT: ese token se refresca cada hora, así que su `iat` se
+renueva y nunca llegaría al límite — es justamente el bug que haría que la
+expiración no expirara nunca.
+
+Si no hay forma de saber cuándo fue el login, NO se cierra la sesión: echar a
+alguien por las dudas es peor que dejar una sesión de más, y el próximo login
+ya deja el timestamp.
+
+**Pendiente de verificar:** el brief pedía revisar antes si el setting nativo
+de Supabase (Auth → Sessions → "time-box user sessions") está disponible en
+el plan actual. No se pudo verificar desde acá (hace falta entrar al
+dashboard) y es un setting de plan pago. Si está disponible, conviene
+activarlo igual: el chequeo del cliente no revoca el refresh token del lado
+del servidor, solo cierra la sesión en la app. Los dos conviven sin
+pisarse — el nativo corta antes.
+
+---
