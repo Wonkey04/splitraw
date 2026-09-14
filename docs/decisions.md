@@ -335,3 +335,37 @@ opcional aunque la columna no exista en la base — ya no lo usa ninguna
 pantalla del owner, pero se deja hasta barrer los últimos usos.
 
 ---
+
+## 2026-09 — Crear rutina para un alumno puntual: query param, no flujo paralelo
+
+La pantalla de asignar solo dejaba elegir entre rutinas ya existentes. Si el
+owner/trainer quería una rutina puntual para ese alumno tenía que irse a
+Rutinas, crearla, volver y buscar al alumno de nuevo.
+
+**Qué se hizo:** una tercera opción abajo de las cards — "+ Crear rutina
+nueva para {alumno}" — que lleva a `/…/routines/create?assignToMemberId=<id>`.
+El form de creación es **el mismo de siempre**; cuando detecta el param,
+después de insertar el template y los ejercicios hace el INSERT en `routines`
+con los mismos campos que usa `AssignRoutineToMember`, y vuelve al listado de
+miembros en vez de a la ficha de la rutina.
+
+**Por qué un query param y no una pantalla nueva:** misma razón que la
+decisión de duplicar rutina — un segundo flujo de creación significa dos
+formularios que se van desincronizando. Acá la rama nueva son 10 líneas al
+final del submit, no un camino aparte.
+
+**Rutina huérfana:** el INSERT del template y el de la asignación no son una
+transacción (son dos llamadas desde el cliente). Si la asignación falla, la
+rutina YA existe: la pantalla lo dice explícitamente ("Creada, pero sin
+asignar"), con el nombre, un link para asignarla y otro para verla, en vez de
+redirigir como si no hubiera pasado nada. Si en cambio el usuario abandona
+antes de guardar, no queda nada colgado — el INSERT recién pasa al hacer
+"Guardar", y el cartel de arriba lo aclara.
+
+**Pendiente / desvío del brief:** el brief pedía volver "a la ficha del
+alumno". Esa ficha no existe todavía como ruta: hoy `/…/members/[id]` solo
+tiene `assign-routine`. Se vuelve al listado de miembros (que ya muestra la
+rutina actual de cada socio, así que el resultado se ve igual). Cuando exista
+la ficha, es cambiar `membersPath`.
+
+---

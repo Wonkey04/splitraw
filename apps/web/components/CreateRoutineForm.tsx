@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { DAYS_OF_WEEK } from "@/lib/constants";
 import { useUserProfile } from "@/lib/context/UserProfileContext";
+import { fetchMemberName } from "@/lib/memberName";
 import type { RoutineTemplate, Exercise } from "@/lib/types";
 import ExerciseSelector, { type ExerciseSelectorResult } from "@/components/ExerciseSelector";
 import ValueEditor, { type ValueEditorResult } from "@/components/ValueEditor";
 import {
+  Badge,
   Button,
   Card,
   Input,
@@ -53,11 +56,40 @@ export interface CreateRoutineFormProps {
    * los dos es a donde se redirige despues de guardar.
    */
   basePath: string;
+  /**
+   * A donde volver cuando la rutina se creo para un socio puntual
+   * (?assignToMemberId): el listado de miembros de quien la creo, no el de
+   * rutinas. `/dashboard/members` para el GYM_OWNER, `/trainer` para el
+   * TRAINER.
+   */
+  membersPath: string;
+  /**
+   * Base de la pantalla de asignar del rol, para la salida cuando la rutina
+   * se creo pero la asignacion fallo:
+   * `${assignHrefBase}/<id>/assign-routine`. Es la misma base que usa
+   * MembersSection — no se puede derivar de `membersPath` porque el trainer
+   * vuelve a `/trainer` pero sus socios viven en `/trainer/members/<id>`.
+   */
+  assignHrefBase: string;
 }
 
-export default function CreateRoutineForm({ basePath }: CreateRoutineFormProps) {
+export default function CreateRoutineForm({
+  basePath,
+  membersPath,
+  assignHrefBase,
+}: CreateRoutineFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { profile } = useUserProfile();
+
+  // Crear + asignar en un paso: la pantalla de asignar rutina manda para aca
+  // con el socio en el query param cuando ninguna rutina existente le sirve.
+  // No hay un flujo de creacion aparte — es este mismo form, con un INSERT
+  // extra al final (el mismo que hace AssignRoutineToMember).
+  const assignToMemberId = searchParams?.get("assignToMemberId") ?? null;
+  const [assignToMemberName, setAssignToMemberName] = useState<string | null>(null);
+  /** Rutina ya creada que NO se pudo asignar: no se puede quedar callado. */
+  const [orphanTemplate, setOrphanTemplate] = useState<{ id: string; name: string } | null>(null);
 
   // Paso 0: "desde cero" salta directo al form vacío (comportamiento de
   // siempre); "existente" muestra el selector de rutinas del gimnasio y
@@ -77,6 +109,28 @@ export default function CreateRoutineForm({ basePath }: CreateRoutineFormProps) 
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!assignToMemberId) return;
+
+    let cancelled = false;
+
+    async function loadMemberName() {
+      try {
+        const name = await fetchMemberName(assignToMemberId!);
+        if (!cancelled) setAssignToMemberName(name);
+      } catch {
+        // El nombre es contexto para el cartel de arriba: si falla, el form
+        // sigue siendo usable y la asignacion no depende de esto.
+        if (!cancelled) setAssignToMemberName(null);
+      }
+    }
+    loadMemberName();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assignToMemberId]);
 
   useEffect(() => {
     if (startMode !== "existing" || !profile || sourceTemplates.length > 0) return;
@@ -279,22 +333,98 @@ export default function CreateRoutineForm({ basePath }: CreateRoutineFormProps) 
 
     const { error: exercisesError } = await supabase.from("exercises").insert(exerciseRows);
 
-    setSaving(false);
-
     if (exercisesError) {
+      setSaving(false);
       setError("La rutina se creó pero falló al guardar los ejercicios: " + exercisesError.message);
       return;
     }
 
-    router.push(`${basePath}/${template.id}`);
+    // Flujo normal (sin socio en el query param): a la ficha de la rutina.
+    if (!assignToMemberId) {
+      setSaving(false);
+      router.push(`${basePath}/${template.id}`);
+      return;
+    }
+
+    // Vino desde "asignar rutina": el MISMO INSERT que hace
+    // AssignRoutineToMember, no uno nuevo. `routines` es historial, asi que
+    // esto agrega una fila y pasa a ser la rutina actual del socio.
+    const { error: assignError } = await supabase.from("routines").insert({
+      member_id: assignToMemberId,
+      routine_template_id: template.id,
+      organization_id: profile.organization_id,
+      assigned_by: userId,
+    });
+
+    setSaving(false);
+
+    if (assignError) {
+      // La rutina YA existe: irse sin decirlo la dejaria colgada sin que
+      // nadie sepa que se creo. Se muestra el estado real y la salida.
+      setOrphanTemplate({ id: template.id, name: name.trim() });
+      return;
+    }
+
+    router.push(membersPath);
   }
 
   const editingRow = popover?.type === "edit" ? rows.find((r) => r.rowId === popover.rowId) : null;
   const editingCell = editingRow && popover?.type === "edit" ? editingRow.cells[popover.day] ?? null : null;
 
+  // Cartel de contexto cuando se entro desde "asignar rutina". Aclara
+  // ademas que todavia no se creo nada: si el usuario se va a mitad de
+  // camino no queda ninguna rutina colgada, porque el INSERT recien pasa al
+  // guardar.
+  const assignBanner = assignToMemberId ? (
+    <Card className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1">
+      <Badge variant="neutral">Para un alumno</Badge>
+      <p className="text-body text-textSecondary">
+        Al guardar, esta rutina se le asigna a{" "}
+        <span className="text-textPrimary">{assignToMemberName ?? "el alumno"}</span>. Hasta
+        entonces no se crea nada.
+      </p>
+    </Card>
+  ) : null;
+
+  // La rutina se creo pero el INSERT de la asignacion fallo. Lo peor seria
+  // redirigir igual: el usuario se iria creyendo que no paso nada y la
+  // rutina quedaria dando vueltas sin asignar.
+  if (orphanTemplate) {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <Card className="flex flex-col items-start gap-3">
+          <Badge variant="warning">Creada, pero sin asignar</Badge>
+          <p className="text-body text-textPrimary">
+            La rutina <span className="font-medium">{orphanTemplate.name}</span> quedó creada, pero
+            no se pudo asignar a {assignToMemberName ?? "el alumno"}.
+          </p>
+          <p className="text-body text-textSecondary">
+            No hace falta crearla de nuevo: ya está en el listado de rutinas. Podés asignársela
+            desde la pantalla de asignar.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`${assignHrefBase}/${assignToMemberId}/assign-routine`}
+              className="rounded bg-accent px-4 py-2 text-body font-medium text-white transition-colors hover:bg-accentHover"
+            >
+              Asignar ahora
+            </Link>
+            <Link
+              href={`${basePath}/${orphanTemplate.id}`}
+              className="rounded border border-border px-4 py-2 text-body font-medium text-textPrimary transition-colors hover:bg-bgTertiary"
+            >
+              Ver la rutina
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   if (startMode === "choose" || startMode === "existing") {
     return (
       <div className="mx-auto max-w-lg">
+        {assignBanner}
         <Card className="flex flex-col gap-4">
           <h1 className="text-h1">¿Cómo querés empezar?</h1>
 
@@ -351,6 +481,7 @@ export default function CreateRoutineForm({ basePath }: CreateRoutineFormProps) 
 
   return (
     <div>
+      {assignBanner}
       <Card className="mb-6 flex flex-col gap-4">
         <h1 className="text-h1">Crear rutina</h1>
 
@@ -378,7 +509,11 @@ export default function CreateRoutineForm({ basePath }: CreateRoutineFormProps) 
         {error && <p className="text-small text-error">{error}</p>}
 
         <Button fullWidth onClick={handleSaveRoutine} disabled={saving}>
-          {saving ? "Guardando..." : "Guardar rutina"}
+          {saving
+            ? "Guardando..."
+            : assignToMemberId
+              ? `Guardar y asignar a ${assignToMemberName ?? "el alumno"}`
+              : "Guardar rutina"}
         </Button>
       </Card>
 

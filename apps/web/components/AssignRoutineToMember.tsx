@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { DAYS_OF_WEEK } from "@/lib/constants";
 import { useUserProfile } from "@/lib/context/UserProfileContext";
+import { fetchMemberName } from "@/lib/memberName";
 import type { RoutineTemplate } from "@/lib/types";
 import { Badge, Button, Card } from "@/components/ui";
 
@@ -59,30 +60,18 @@ export default function AssignRoutineToMember({
 
     async function loadScreen() {
       try {
-        const [templatesRes, memberRes] = await Promise.all([
+        // Header: a quien le estoy asignando. El nombre no esta en `members`
+        // (esa tabla no tiene columna de nombre), viene de user_profiles.
+        const [templatesRes, resolvedName] = await Promise.all([
           supabase
             .from("routine_templates")
             .select("*")
             .eq("organization_id", profile!.organization_id)
             .order("created_at", { ascending: false }),
-          supabase.from("members").select("id, user_id, email").eq("id", memberId).maybeSingle(),
+          fetchMemberName(memberId),
         ]);
 
-        // Header: a quien le estoy asignando. El nombre no esta en `members`
-        // (esa tabla no tiene columna de nombre), viene de user_profiles.
-        if (memberRes.data) {
-          const member = memberRes.data as { user_id: string; email: string };
-          const { data: memberProfile } = await supabase
-            .from("user_profiles")
-            .select("name, surname")
-            .eq("id", member.user_id)
-            .maybeSingle();
-
-          const fullName = memberProfile
-            ? `${memberProfile.name ?? ""} ${memberProfile.surname ?? ""}`.trim()
-            : "";
-          setMemberName(fullName || member.email);
-        }
+        setMemberName(resolvedName);
 
         // Contexto: que rutina tiene hoy. `routines` es historial, la actual
         // es la ultima asignada.
@@ -198,6 +187,11 @@ export default function AssignRoutineToMember({
 
   const selectedCard = cards.find((c) => c.template.id === selectedId);
 
+  // "Crear rutina nueva" NO es un flujo de creacion paralelo: manda al mismo
+  // /routines/create de siempre con el socio en el query param, y el form se
+  // encarga de asignarla al guardar. Ver DECISIONS.md.
+  const createForMemberHref = `${createRoutineHref}?assignToMemberId=${memberId}`;
+
   // Confirmacion explicita: antes esto era un redirect silencioso y no
   // quedaba claro si habia pasado algo.
   if (success) {
@@ -239,10 +233,10 @@ export default function AssignRoutineToMember({
             </p>
           </div>
           <Link
-            href={createRoutineHref}
+            href={createForMemberHref}
             className="rounded bg-accent px-4 py-2 text-body font-medium text-white transition-colors hover:bg-accentHover"
           >
-            Crear rutina
+            Crear rutina para {memberName ?? "este miembro"}
           </Link>
         </Card>
       ) : (
@@ -290,6 +284,16 @@ export default function AssignRoutineToMember({
                 </label>
               );
             })}
+
+            {/* Tercera opcion, al mismo nivel que las rutinas existentes: si
+                ninguna sirve para este alumno, la salida esta aca y no
+                "andate a Rutinas, crea, y volve a buscarlo". */}
+            <Link
+              href={createForMemberHref}
+              className="rounded border border-dashed border-border p-4 text-body text-textSecondary transition-colors hover:border-accent hover:text-accent"
+            >
+              + Crear rutina nueva para {memberName ?? "este miembro"}
+            </Link>
           </div>
 
           {error && <p className="text-small text-error">{error}</p>}
