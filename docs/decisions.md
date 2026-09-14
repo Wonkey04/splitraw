@@ -369,3 +369,37 @@ rutina actual de cada socio, así que el resultado se ve igual). Cuando exista
 la ficha, es cambiar `membersPath`.
 
 ---
+
+## 2026-09 — Panel de empleados: el equipo, no solo las invitaciones
+
+`/dashboard/employees` era la pantalla de invitaciones y nada más: el owner
+podía invitar entrenadores y ver el estado de los links, pero no tenía
+ninguna vista de quién trabaja hoy en el gimnasio.
+
+**Qué se hizo:** la pantalla ahora abre con el equipo (nombre + apellido,
+email, rol, sucursal, fecha de alta) y abajo, en la misma vista, el form de
+invitar y el listado de invitaciones con su estado. El nav dice "Empleados"
+en vez de "Entrenadores", que es lo que la pantalla realmente muestra (el
+owner y los admins también salen en la tabla).
+
+**Por qué una RPC SECURITY DEFINER** (`list_org_employees`, `0011`) y no un
+`.select()` sobre `user_profiles` como el resto de la app: el **email del
+empleado no está en user_profiles** — vive en `auth.users`, y ese esquema no
+es accesible desde el rol `authenticated`. Es la misma razón por la que las
+funciones de invitación de 0007 son definer. Como en una definer la RLS del
+caller no aplica, el chequeo de permisos es explícito y es lo primero que
+hace la función: GYM_OWNER/ADMIN y solo de su propia organización.
+
+Los JOIN a `auth.users` y a `branches` son LEFT: un perfil cuyo usuario de
+auth ya no existe, o con una sucursal borrada, tiene que seguir apareciendo
+con la celda vacía en vez de desaparecer del listado sin aviso.
+
+**Alcance:** es de solo lectura a propósito — no hay editar empleado, cambiar
+de sucursal ni dar de baja. Eso es otra decisión (¿qué pasa con las rutinas
+que creó un trainer al que se da de baja?) y no entra acá.
+
+**Ojo al aplicar 0011:** asume que `user_profiles` tiene `created_at`. Si la
+tabla real no lo tiene, la función falla al crearse — es la columna "fecha de
+alta" del listado.
+
+---

@@ -96,7 +96,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </Link>
                 <NavLink href="/dashboard/routines">Rutinas</NavLink>
                 <NavLink href="/dashboard/members">Miembros</NavLink>
-                <NavLink href="/dashboard/employees">Entrenadores</NavLink>
+                <NavLink href="/dashboard/employees">Empleados</NavLink>
               </div>
               <Button variant="secondary" onClick={handleLogout}>
                 Cerrar sesión
