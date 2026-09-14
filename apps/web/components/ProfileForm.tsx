@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { useUserProfile } from "@/lib/context/UserProfileContext";
 import { initialsOf, uploadAvatar } from "@/lib/avatar";
 import { Badge, Button, Card, Input } from "@/components/ui";
+import DeleteAccountCard from "@/components/DeleteAccountCard";
 
 // Pantalla de Perfil, compartida entre el GYM_OWNER (/dashboard/profile) y
 // el TRAINER (/trainer/profile): los datos personales viven en la misma
@@ -189,6 +190,9 @@ export default function ProfileForm() {
           </div>
         </form>
       </Card>
+
+      {/* Abajo de todo y separada: es la accion irreversible de la pantalla. */}
+      <DeleteAccountCard />
     </div>
   );
 }

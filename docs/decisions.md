@@ -487,3 +487,43 @@ del servidor, solo cierra la sesión en la app. Los dos conviven sin
 pisarse — el nativo corta antes.
 
 ---
+
+## 2026-09 — Eliminar cuenta: Edge Function, y qué pasa con cada rol
+
+Borrar de `auth.users` requiere la `service_role` key, que nunca puede viajar
+al cliente — el mismo problema que ya se resolvió así con Resend. Va entonces
+en la Edge Function `delete-account`, donde la key vive en el runtime de
+Supabase.
+
+**Nadie borra la cuenta de otro:** el id NO se recibe por parámetro, se saca
+del token del que llama (validado con el cliente anon, no con el service
+role). Un body con el uid de otra persona no tiene ningún efecto porque no se
+lee.
+
+**MEMBER:** se borra de abajo hacia arriba — `exercise_log`, `routines`
+asignadas, `members`, la foto del bucket, `user_profiles` y por último
+`auth.users`. Al revés falla por FK.
+
+**TRAINER — decisión tomada con el dueño del producto: las rutinas que creó
+QUEDAN en el gimnasio.** Nadie se queda sin rutina porque su entrenador se
+dio de baja. No pueden quedarse "huérfanas" tal cual están: `created_by` y
+`assigned_by` apuntan al usuario de auth y borrarlo con filas que lo
+referencian falla por FK. Se **reasignan al dueño del gimnasio** — la rutina
+sigue viva, con un responsable real, y no hay que tocar el esquema (la
+alternativa era hacer `created_by` nullable con ON DELETE SET NULL). También
+se borra la invitación con la que entró, que guarda su email.
+
+**GYM_OWNER: explícitamente fuera de este brief.** Un owner puede ser el
+único de una organización con datos de otra gente adentro. La función corta
+con un mensaje claro en vez de borrar a medias; qué pasa con la organización
+es una decisión de producto todavía sin tomar.
+
+**La confirmación es escrita** ("ELIMINAR"), no un "¿estás seguro?": un botón
+al lado de una pregunta se acepta sin leer, y esto no se deshace. Después de
+borrar: `signOut()` y afuera — la cuenta ya no existe pero la sesión seguía
+en el dispositivo.
+
+**Para que funcione hay que deployarla:** `supabase functions deploy
+delete-account`. Hasta entonces el botón existe y falla.
+
+---

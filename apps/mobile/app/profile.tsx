@@ -15,9 +15,13 @@ import { Badge, Button, Input } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { colors, radius, spacing, typography } from "@/theme";
+import { clearGymSession } from "@/utils/storage";
 import { initialsOf, uploadAvatar } from "@/utils/avatar";
 
 const AVATAR_SIZE = 96;
+
+/** Lo que hay que escribir para habilitar la baja de cuenta. */
+const CONFIRM_WORD = "ELIMINAR";
 
 /** La foto elegida en el picker, todavía sin subir. */
 interface PendingPhoto {
@@ -46,6 +50,13 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  // Baja de cuenta: la confirmacion es ESCRITA a proposito. Un "¿estas
+  // seguro?" con un boton al lado se acepta sin leer, y esto no se deshace.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -176,6 +187,41 @@ export default function Profile() {
     }
   }
 
+  async function handleDeleteAccount() {
+    setDeleteError(null);
+
+    if (confirmText.trim().toUpperCase() !== CONFIRM_WORD) return;
+
+    setDeleting(true);
+
+    try {
+      // El borrado real lo hace la Edge Function `delete-account`: sacar una
+      // fila de auth.users necesita la service_role key, que nunca puede
+      // viajar al cliente.
+      const { data, error: invokeError } = await supabase.functions.invoke("delete-account", {
+        method: "POST",
+      });
+
+      // invoke devuelve un error generico cuando la funcion responde con un
+      // status de error: el mensaje util viene en el body.
+      const message = (data as { error?: string } | null)?.error;
+
+      if (invokeError || message) {
+        setDeleteError(message ?? "No se pudo eliminar la cuenta. Probá de nuevo.");
+        setDeleting(false);
+        return;
+      }
+
+      // La cuenta ya no existe, pero la sesion sigue en el dispositivo.
+      await supabase.auth.signOut();
+      await clearGymSession();
+      router.replace("/login");
+    } catch {
+      setDeleteError("No se pudo eliminar la cuenta. Revisá tu conexión.");
+      setDeleting(false);
+    }
+  }
+
   // Lo que se ve: la foto recien elegida si hay, si no la guardada.
   const shownPhoto = pendingPhoto?.uri ?? avatarUrl;
 
@@ -245,6 +291,54 @@ export default function Profile() {
             <Button fullWidth onPress={handleSave} loading={saving} disabled={saving}>
               Guardar cambios
             </Button>
+
+            {/* Abajo de todo y separado: es la accion irreversible de la
+                pantalla. */}
+            <View style={styles.dangerZone}>
+              <Text style={styles.dangerTitle}>Eliminar mi cuenta</Text>
+              <Text style={styles.dangerText}>
+                Se borran tus datos personales y tu historial de entrenamientos. No se puede
+                deshacer.
+              </Text>
+
+              {!deleteOpen ? (
+                <Button variant="secondary" onPress={() => setDeleteOpen(true)}>
+                  Eliminar mi cuenta
+                </Button>
+              ) : (
+                <>
+                  <Input
+                    label={`Escribí ${CONFIRM_WORD} para confirmar`}
+                    value={confirmText}
+                    onChangeText={setConfirmText}
+                    placeholder={CONFIRM_WORD}
+                    autoCapitalize="characters"
+                  />
+
+                  {deleteError && <Text style={styles.errorText}>{deleteError}</Text>}
+
+                  <Button
+                    variant="destructive"
+                    onPress={handleDeleteAccount}
+                    loading={deleting}
+                    disabled={deleting || confirmText.trim().toUpperCase() !== CONFIRM_WORD}
+                  >
+                    Eliminar definitivamente
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={deleting}
+                    onPress={() => {
+                      setDeleteOpen(false);
+                      setConfirmText("");
+                      setDeleteError(null);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </>
+              )}
+            </View>
           </>
         )}
       </ScrollView>
@@ -279,4 +373,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   errorText: { ...typography.small, color: colors.error },
+  dangerZone: {
+    marginTop: spacing.xl,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: spacing.sm,
+  },
+  dangerTitle: { ...typography.h3, color: colors.textPrimary },
+  dangerText: { ...typography.body, color: colors.textSecondary },
 });
