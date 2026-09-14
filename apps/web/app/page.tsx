@@ -5,9 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { landingPathForCurrentUser } from "@/lib/roleRedirect";
+import { Button, Card, Input } from "@/components/ui";
 
-// Login page. Signs the gym owner in via Supabase Auth (email/password)
-// and redirects to the dashboard on success.
+// Login page. Signs the user in via Supabase Auth (email/password) y lo
+// manda al panel que le corresponde por rol: /dashboard el GYM_OWNER,
+// /trainer el TRAINER.
 export default function LoginPage() {
   const router = useRouter();
   const { session, loading } = useAuth();
@@ -18,7 +21,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!loading && session) {
-      router.replace("/dashboard");
+      landingPathForCurrentUser().then((path) => router.replace(path));
     }
   }, [loading, session, router]);
 
@@ -43,60 +46,54 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/dashboard");
+    router.push(await landingPathForCurrentUser());
   }
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-text-secondary">
+      <div className="flex min-h-screen items-center justify-center text-body text-textSecondary">
         Cargando...
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="card w-full max-w-sm">
-        <h1 className="mb-1 text-xl font-semibold">SplitRaw Admin</h1>
-        <p className="mb-6 text-sm text-text-secondary">Ingresá con tu cuenta de gimnasio.</p>
+    <div className="flex min-h-screen items-center justify-center bg-bgSecondary p-4">
+      <Card className="w-full max-w-[400px]">
+        <h1 className="mb-2 text-h2">SplitRaw Admin</h1>
+        <p className="mb-6 text-body text-textSecondary">Ingresá con tu cuenta de gimnasio.</p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm text-text-secondary">Email</label>
-            <input
-              type="email"
-              className="input-field"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="owner@gym.com"
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <Input
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="owner@gym.com"
+          />
 
-          <div>
-            <label className="mb-1 block text-sm text-text-secondary">Password</label>
-            <input
-              type="password"
-              className="input-field"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-          </div>
+          <Input
+            label="Contraseña"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+          />
 
-          {error && <p className="text-sm text-error">{error}</p>}
+          {error && <p className="text-small text-error">{error}</p>}
 
-          <button type="submit" className="btn-primary w-full" disabled={submitting}>
-            {submitting ? "Ingresando..." : "Login"}
-          </button>
+          <Button type="submit" fullWidth disabled={submitting}>
+            {submitting ? "Ingresando..." : "Ingresar"}
+          </Button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-text-secondary">
+        <p className="mt-6 text-center text-body text-textSecondary">
           ¿No tenés gimnasio?{" "}
-          <Link href="/create-gym" className="text-primary">
+          <Link href="/create-gym" className="rounded text-accent hover:text-accentHover">
             Creá tu gimnasio
           </Link>
         </p>
-      </div>
+      </Card>
     </div>
   );
 }

@@ -8,6 +8,33 @@ export interface Member {
   full_name?: string | null;
 }
 
+export interface GymInvitationCode {
+  id: string;
+  organization_id: string;
+  code: string;
+  created_at?: string;
+  deleted_at?: string | null;
+}
+
+export interface Branch {
+  id: string;
+  organization_id: string;
+  name: string;
+  address?: string | null;
+  created_at?: string;
+}
+
+export interface UserProfile {
+  id: string;
+  organization_id: string;
+  branch_id: string;
+  role: string;
+  name: string;
+  surname?: string | null;
+  phone?: number | null;
+  created_at?: string;
+}
+
 export interface RoutineTemplate {
   id: string;
   name: string;
@@ -35,5 +62,14 @@ export interface Routine {
   routine_template_id: string;
   organization_id: string;
   assigned_by: string;
+  created_at?: string;
+}
+
+export interface ExerciseLog {
+  id: string;
+  member_id: string;
+  routine_id: string;
+  fecha: string;
+  completado: boolean;
   created_at?: string;
 }

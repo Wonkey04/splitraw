@@ -2,20 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f9fa;
+  --bg-tertiary: #f0f1f3;
+
+  --text-primary: #1a202c;
+  --text-secondary: #6b7280;
+  --border: #e5e7eb;
+
+  --accent: #1e3a8a;
+  --accent-hover: #2563eb;
+
+  --success: #10b981;
+  --error: #dc2626;
+  --warning: #f59e0b;
+
+  --overlay: rgba(26, 32, 44, 0.4);
+
+  --radius: 6px;
+}
+
+html,
 body {
-  background-color: #0b0f14;
-  color: #f9fafb;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
-/* Shared form control styling so inputs look consistent across pages. */
-.input-field {
-  @apply w-full rounded border border-gray-700 bg-bg-secondary px-3 py-2 text-text-primary placeholder-text-secondary outline-none focus:border-primary;
-}
-
-.btn-primary {
-  @apply rounded bg-primary px-4 py-2 font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50;
-}
-
-.card {
-  @apply rounded border border-gray-800 bg-bg-secondary p-6;
+/* Foco de teclado visible y consistente en toda la interfaz. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

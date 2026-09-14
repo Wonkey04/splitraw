@@ -1,57 +1,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useUserProfile } from "@/lib/context/UserProfileContext";
 import InvitationCodeCard from "@/components/InvitationCodeCard";
+import MembersSection from "@/components/MembersSection";
 import { createGymInvitationCode } from "@/lib/invitationCode";
-import type { GymInvitationCode, Member } from "@/lib/types";
+import type { GymInvitationCode } from "@/lib/types";
+import { Button, Card } from "@/components/ui";
 
-// Lists all members of la organizacion del usuario logueado, con accion
-// para asignarles una rutina. Arriba de la tabla muestra el codigo de
-// invitacion permanente del gimnasio (gym_invitation_codes).
+// Miembros del gimnasio para el GYM_OWNER: arriba el codigo de invitacion
+// permanente (gym_invitation_codes) y abajo el listado.
+//
+// El listado es el mismo componente que usa el trainer, con scope "org": el
+// owner ve TODA la organizacion (sin filtro de sucursal) y por eso la tabla
+// le agrega la columna Sucursal. El paginado, el buscador y el JOIN a
+// user_profiles para el nombre viven en la RPC list_org_members (0010) —
+// antes esta pantalla traia todos los members de una y pintaba "-" en la
+// columna Nombre porque ese dato no esta en `members`.
 export default function MembersListPage() {
   const { profile, loading: profileLoading } = useUserProfile();
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [invitation, setInvitation] = useState<GymInvitationCode | null>(null);
   const [invitationLoading, setInvitationLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [invitationError, setInvitationError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (profileLoading) return;
-
-    if (!profile) {
-      setError("No se encontró tu perfil. Volvé a loguearte.");
-      setLoading(false);
-      return;
-    }
-
-    async function loadMembers() {
-      try {
-        const { data, error: fetchError } = await supabase
-          .from("members")
-          .select("*")
-          .eq("organization_id", profile!.organization_id);
-
-        if (fetchError) {
-          setError("No se pudieron cargar los miembros.");
-        } else {
-          setMembers(data as Member[]);
-        }
-      } catch {
-        setError("No se pudieron cargar los miembros.");
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadMembers();
-  }, [profile, profileLoading]);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -149,10 +123,12 @@ export default function MembersListPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">Miembros</h1>
+      <h1 className="mb-6 text-h1">Miembros</h1>
 
       <div className="mb-6">
-        {invitationLoading && <p className="text-sm text-text-secondary">Cargando código de invitación...</p>}
+        {invitationLoading && (
+          <p className="text-body text-textSecondary">Cargando código de invitación...</p>
+        )}
 
         {/* Ya existe codigo: mostramos la tarjeta con copiar/regenerar. */}
         {!invitationLoading && invitation && (
@@ -167,54 +143,26 @@ export default function MembersListPage() {
 
         {/* Gimnasio viejo sin codigo: boton de respaldo para generarlo. */}
         {!invitationLoading && !invitation && (
-          <div className="card">
-            <h2 className="mb-2 text-lg font-semibold">Código de invitación de tu gimnasio</h2>
-            <p className="mb-4 text-sm text-text-secondary">
-              Tu gimnasio todavía no tiene un código. Generá uno para que tus alumnos se
-              registren en la app.
+          <Card>
+            <h2 className="mb-2 text-h3">Código de invitación de tu gimnasio</h2>
+            <p className="mb-4 text-body text-textSecondary">
+              Tu gimnasio todavía no tiene un código. Generá uno para que tus alumnos se registren
+              en la app.
             </p>
-            <button className="btn-primary" onClick={handleGenerate} disabled={regenerating}>
+            <Button onClick={handleGenerate} disabled={regenerating}>
               {regenerating ? "Generando..." : "Generar código de invitación"}
-            </button>
-          </div>
+            </Button>
+          </Card>
         )}
 
-        {invitationError && <p className="mt-2 text-sm text-error">{invitationError}</p>}
+        {invitationError && <p className="mt-2 text-small text-error">{invitationError}</p>}
       </div>
 
-      {loading && <p className="text-text-secondary">Cargando...</p>}
-      {error && <p className="text-error">{error}</p>}
-      {!loading && !error && members.length === 0 && (
-        <p className="text-text-secondary">No hay miembros aún.</p>
-      )}
-
-      {!loading && members.length > 0 && (
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b border-gray-800 text-sm text-text-secondary">
-              <th className="py-2">Email</th>
-              <th className="py-2">Nombre</th>
-              <th className="py-2">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((member) => (
-              <tr key={member.id} className="border-b border-gray-800">
-                <td className="py-2">{member.email}</td>
-                <td className="py-2">{member.full_name ?? "-"}</td>
-                <td className="py-2">
-                  <Link
-                    href={`/dashboard/members/${member.id}/assign-routine`}
-                    className="text-sm text-primary hover:underline"
-                  >
-                    Asignar Rutina
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <MembersSection
+        scope="org"
+        assignHrefBase="/dashboard/members"
+        scopeLabel="Todas las sucursales"
+      />
     </div>
   );
 }

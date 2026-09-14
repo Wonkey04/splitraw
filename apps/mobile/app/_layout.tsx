@@ -1,15 +1,16 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { colors } from "@/constants/colors";
+import { colors } from "@/theme";
 
 export default function RootLayout() {
   return (
     <>
-      <StatusBar style="light" />
+      {/* Light-first: la barra de estado va en oscuro sobre fondo claro. */}
+      <StatusBar style="dark" />
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: colors.bg },
+          contentStyle: { backgroundColor: colors.bgPrimary },
         }}
       />
     </>

@@ -74,7 +74,31 @@ export interface Member {
   organization_id: string;
   branch_id: string;
   email: string;
+  phone?: string | null;
+  date_of_birth?: string | null;
+  activated_at?: string | null;
+  activation_expires_at?: string | null;
+  /**
+   * OJO: la tabla `members` NO tiene esta columna en la base real (se
+   * verificó contra el esquema vivo). El nombre del socio vive en
+   * user_profiles, ligado por members.user_id = user_profiles.id. Queda
+   * declarada como opcional porque las pantallas del owner todavía la leen
+   * y caen al email; el listado del trainer sí hace el join correcto.
+   */
   full_name?: string | null;
+}
+
+export interface TrainerInvitation {
+  id: string;
+  email: string;
+  name: string;
+  organization_id: string;
+  branch_id: string;
+  invited_by: string;
+  token: string;
+  expires_at: string;
+  used_at?: string | null;
+  created_at?: string;
 }
 
 export interface Routine {

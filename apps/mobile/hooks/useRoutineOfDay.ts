@@ -30,48 +30,52 @@ export function useRoutineOfDay(memberId: string | null | undefined, dayOfWeek: 
     setError(null);
 
     async function load() {
-      const { data: routineRows, error: routineError } = await supabase
-        .from("routines")
-        .select("routine_template_id")
-        .eq("member_id", memberId)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      try {
+        const { data: routineRows, error: routineError } = await supabase
+          .from("routines")
+          .select("routine_template_id")
+          .eq("member_id", memberId)
+          .order("created_at", { ascending: false })
+          .limit(1);
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      if (routineError) {
-        setError("No se pudo cargar tu rutina.");
-        setLoading(false);
-        return;
+        if (routineError) {
+          setError("No se pudo cargar tu rutina.");
+          return;
+        }
+
+        const templateId = routineRows?.[0]?.routine_template_id as string | undefined;
+        if (!templateId) {
+          setRoutineName(null);
+          setExercises([]);
+          return;
+        }
+
+        const [templateRes, exercisesRes] = await Promise.all([
+          supabase.from("routine_templates").select("name").eq("id", templateId).single(),
+          supabase
+            .from("exercises")
+            .select("*")
+            .eq("routine_template_id", templateId)
+            .eq("day_of_week", dayOfWeek)
+            .order("name", { ascending: true }),
+        ]);
+
+        if (cancelled) return;
+
+        if (templateRes.error || exercisesRes.error) {
+          setError("No se pudo cargar tu rutina.");
+        } else {
+          setRoutineName((templateRes.data?.name as string | undefined) ?? null);
+          setExercises((exercisesRes.data as Exercise[]) ?? []);
+        }
+      } catch {
+        // fetch rechaza (en vez de resolver con error) cuando no hay red.
+        if (!cancelled) setError("Sin conexión.");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      const templateId = routineRows?.[0]?.routine_template_id as string | undefined;
-      if (!templateId) {
-        setRoutineName(null);
-        setExercises([]);
-        setLoading(false);
-        return;
-      }
-
-      const [templateRes, exercisesRes] = await Promise.all([
-        supabase.from("routine_templates").select("name").eq("id", templateId).single(),
-        supabase
-          .from("exercises")
-          .select("*")
-          .eq("routine_template_id", templateId)
-          .eq("day_of_week", dayOfWeek)
-          .order("name", { ascending: true }),
-      ]);
-
-      if (cancelled) return;
-
-      if (templateRes.error || exercisesRes.error) {
-        setError("No se pudo cargar tu rutina.");
-      } else {
-        setRoutineName((templateRes.data?.name as string | undefined) ?? null);
-        setExercises((exercisesRes.data as Exercise[]) ?? []);
-      }
-      setLoading(false);
     }
 
     load();

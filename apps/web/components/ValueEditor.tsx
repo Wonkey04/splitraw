@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button, Input } from "@/components/ui";
 
 export interface ValueEditorResult {
   sets: number;
@@ -56,61 +57,61 @@ export default function ValueEditor({ anchor, title, initial, onClose, onSave, o
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="fixed z-50 w-64 rounded-lg border border-gray-800 bg-bg-secondary p-4 shadow-lg"
+        className="fixed z-50 w-64 rounded border border-border bg-bgPrimary p-4"
         style={{ left, top }}
       >
-        <h3 className="mb-3 text-sm font-semibold">{title}</h3>
+        <h3 className="mb-4 text-h3">{title}</h3>
 
         <div className="grid grid-cols-3 gap-2">
-          <input
+          <Input
             type="number"
             min={1}
             max={10}
             placeholder="Sets"
-            className="input-field font-mono"
+            aria-label="Sets"
+            className="font-mono"
             value={sets}
             onChange={(e) => setSets(e.target.value)}
             autoFocus
           />
-          <input
+          <Input
             type="number"
             min={1}
             max={50}
             placeholder="Reps"
-            className="input-field font-mono"
+            aria-label="Reps"
+            className="font-mono"
             value={reps}
             onChange={(e) => setReps(e.target.value)}
           />
-          <input
+          <Input
             type="number"
             min={1}
             max={999}
             step="0.5"
             placeholder="Kg"
-            className="input-field font-mono"
+            aria-label="Peso en kilogramos"
+            className="font-mono"
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
           />
         </div>
 
-        {error && <p className="mt-2 text-xs text-error">{error}</p>}
+        {error && <p className="mt-2 text-small text-error">{error}</p>}
 
-        <div className="mt-3 flex gap-2">
-          <button className="btn-primary flex-1" onClick={handleSave}>
+        <div className="mt-4 flex gap-2">
+          <Button className="flex-1" onClick={handleSave}>
             Guardar
-          </button>
+          </Button>
           {initial && (
-            <button
-              className="flex-1 rounded border border-gray-700 text-sm text-text-secondary hover:border-error hover:text-error"
-              onClick={onRemove}
-            >
+            <Button variant="destructive" className="flex-1" onClick={onRemove}>
               Quitar
-            </button>
+            </Button>
           )}
         </div>
-        <button className="mt-2 w-full text-xs text-text-secondary hover:text-text-primary" onClick={onClose}>
+        <Button variant="secondary" fullWidth className="mt-2" onClick={onClose}>
           Cancelar
-        </button>
+        </Button>
       </div>
     </>
   );

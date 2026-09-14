@@ -1,51 +1,86 @@
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text } from "react-native";
 import { router } from "expo-router";
-import { colors } from "@/constants/colors";
-import { supabase } from "@/lib/supabase";
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { Button, Input } from "@/components/ui";
+import { colors, spacing, typography } from "@/theme";
+import { useSupabaseAuth } from "@/hooks/useSupabaseAuth";
+import { isValidEmail, isValidPhone } from "@/utils/validation";
 
 export default function Login() {
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [gymCode, setGymCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [name, setName] = useState("");
+  const [surname, setSurname] = useState("");
+  const [phone, setPhone] = useState("");
+  const [fieldError, setFieldError] = useState<string | null>(null);
 
-  async function handleSignIn() {
+  const { loading, error, setError, login, signup } = useSupabaseAuth();
+  const isSignup = mode === "signup";
+  const displayError = fieldError ?? error;
+
+  function clearErrors() {
+    setFieldError(null);
     setError(null);
+  }
 
-    if (!EMAIL_REGEX.test(email.trim())) {
-      setError("Ingresá un email válido.");
+  function toggleMode() {
+    setMode(isSignup ? "login" : "signup");
+    clearErrors();
+  }
+
+  async function handleSubmit() {
+    clearErrors();
+
+    if (!gymCode.trim()) {
+      setFieldError("Ingresá el código de tu gimnasio.");
       return;
     }
-    if (password.length < 6) {
-      setError("La contraseña debe tener al menos 6 caracteres.");
+    if (!isValidEmail(email)) {
+      setFieldError("Email inválido.");
+      return;
+    }
+    if (isSignup && password.length < 8) {
+      setFieldError("Contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+    if (!isSignup && password.length === 0) {
+      setFieldError("Ingresá tu contraseña.");
       return;
     }
 
-    setSubmitting(true);
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    setSubmitting(false);
+    if (isSignup) {
+      if (!name.trim()) {
+        setFieldError("Nombre requerido.");
+        return;
+      }
+      if (!surname.trim()) {
+        setFieldError("Apellido requerido.");
+        return;
+      }
+      if (!phone.trim()) {
+        setFieldError("Teléfono requerido.");
+        return;
+      }
+      if (!isValidPhone(phone)) {
+        setFieldError("Solo números permitidos.");
+        return;
+      }
 
-    if (signInError) {
-      setError("Email o password incorrecto.");
-      return;
+      const ok = await signup({
+        gymCode,
+        email,
+        password,
+        name: name.trim(),
+        surname: surname.trim(),
+        phone: phone.trim(),
+      });
+      if (ok) router.replace("/home");
+    } else {
+      const ok = await login({ gymCode, email, password });
+      if (ok) router.replace("/home");
     }
-
-    router.replace("/home");
   }
 
   return (
@@ -53,53 +88,98 @@ export default function Login() {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <Text style={styles.title}>BulkNode</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <Text style={styles.title}>BulkNode</Text>
 
-      <View style={styles.field}>
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          style={styles.input}
+        <Input
+          label="Código de gimnasio"
+          containerStyle={styles.field}
+          value={gymCode}
+          onChangeText={(value) => {
+            setGymCode(value);
+            clearErrors();
+          }}
+          placeholder="GYM-001"
+          autoCapitalize="characters"
+          autoCorrect={false}
+        />
+
+        <Input
+          label="Email"
+          containerStyle={styles.field}
           value={email}
           onChangeText={(value) => {
             setEmail(value);
-            setError(null);
+            clearErrors();
           }}
           placeholder="tu@email.com"
-          placeholderTextColor={colors.textSecondary}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="email-address"
         />
-      </View>
 
-      <View style={styles.field}>
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={styles.input}
+        <Input
+          label="Contraseña"
+          containerStyle={styles.field}
           value={password}
           onChangeText={(value) => {
             setPassword(value);
-            setError(null);
+            clearErrors();
           }}
           placeholder="••••••"
-          placeholderTextColor={colors.textSecondary}
           secureTextEntry
         />
-      </View>
 
-      {error && <Text style={styles.error}>{error}</Text>}
+        {isSignup && (
+          <>
+            <Input
+              label="Nombre"
+              containerStyle={styles.field}
+              value={name}
+              onChangeText={(value) => {
+                setName(value);
+                clearErrors();
+              }}
+              placeholder="Juan"
+            />
 
-      <Pressable
-        style={[styles.button, submitting && styles.buttonDisabled]}
-        onPress={handleSignIn}
-        disabled={submitting}
-      >
-        {submitting ? (
-          <ActivityIndicator color={colors.text} />
-        ) : (
-          <Text style={styles.buttonText}>Sign In</Text>
+            <Input
+              label="Apellido"
+              containerStyle={styles.field}
+              value={surname}
+              onChangeText={(value) => {
+                setSurname(value);
+                clearErrors();
+              }}
+              placeholder="Pérez"
+            />
+
+            <Input
+              label="Teléfono"
+              containerStyle={styles.field}
+              value={phone}
+              onChangeText={(value) => {
+                setPhone(value);
+                clearErrors();
+              }}
+              placeholder="3511234567"
+              keyboardType="number-pad"
+            />
+          </>
         )}
-      </Pressable>
+
+        {displayError && <Text style={styles.error}>{displayError}</Text>}
+
+        <Button fullWidth loading={loading} onPress={handleSubmit} style={styles.submit}>
+          {isSignup ? "Crear cuenta" : "Ingresar"}
+        </Button>
+
+        <Pressable onPress={toggleMode} hitSlop={8} style={styles.toggle} disabled={loading}>
+          <Text style={styles.toggleText}>
+            {isSignup ? "¿Ya tenés cuenta? Iniciá sesión" : "¿No tenés cuenta? Registrate"}
+          </Text>
+        </Pressable>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -107,54 +187,38 @@ export default function Login() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bgPrimary,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: "center",
-    paddingHorizontal: 24,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
   },
   title: {
-    color: colors.text,
-    fontSize: 28,
-    fontWeight: "bold",
-    marginBottom: 32,
+    ...typography.h1,
+    color: colors.textPrimary,
+    marginBottom: spacing.xl,
     textAlign: "center",
   },
   field: {
-    marginBottom: 16,
-  },
-  label: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    textTransform: "uppercase",
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    color: colors.text,
-    fontSize: 16,
+    marginBottom: spacing.md,
   },
   error: {
+    ...typography.small,
     color: colors.error,
-    fontSize: 14,
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
-  button: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 14,
+  submit: {
+    marginTop: spacing.sm,
+  },
+  toggle: {
+    marginTop: spacing.lg,
     alignItems: "center",
-    marginTop: 8,
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: "bold",
+  toggleText: {
+    ...typography.body,
+    color: colors.accent,
+    fontWeight: "500",
   },
 });

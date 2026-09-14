@@ -1,7 +1,8 @@
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { colors } from "@/constants/colors";
+import { colors, spacing, typography } from "@/theme";
 import type { Exercise } from "@/types";
 import { ExerciseCard } from "@/components/ExerciseCard";
+import { useMuscleGroupsByExercise } from "@/hooks/useMuscleGroupsByExercise";
 
 interface RoutineListProps {
   exercises: Exercise[];
@@ -10,10 +11,12 @@ interface RoutineListProps {
 }
 
 export function RoutineList({ exercises, onExercisePress, loading }: RoutineListProps) {
+  const muscleGroupByExercise = useMuscleGroupsByExercise(exercises.map((ex) => ex.name));
+
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
+        <ActivityIndicator color={colors.accent} />
       </View>
     );
   }
@@ -28,10 +31,12 @@ export function RoutineList({ exercises, onExercisePress, loading }: RoutineList
 
   return (
     <View>
-      {exercises.map((exercise) => (
+      {exercises.map((exercise, index) => (
         <ExerciseCard
           key={exercise.id}
+          order={index + 1}
           name={exercise.name}
+          muscleGroup={muscleGroupByExercise.get(exercise.name)}
           series={exercise.target_sets}
           reps={exercise.target_reps}
           weightKg={exercise.target_weight_kg}
@@ -44,11 +49,11 @@ export function RoutineList({ exercises, onExercisePress, loading }: RoutineList
 
 const styles = StyleSheet.create({
   center: {
-    paddingVertical: 32,
+    paddingVertical: spacing.xl,
     alignItems: "center",
   },
   emptyText: {
+    ...typography.body,
     color: colors.textSecondary,
-    fontSize: 16,
   },
 });

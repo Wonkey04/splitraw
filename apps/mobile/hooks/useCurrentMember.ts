@@ -20,20 +20,30 @@ export function useCurrentMember(userId: string | null | undefined) {
     setLoading(true);
     setError(null);
 
-    supabase
-      .from("members")
-      .select("*")
-      .eq("user_id", userId)
-      .single()
-      .then(({ data, error: fetchError }) => {
+    async function load() {
+      try {
+        const { data, error: fetchError } = await supabase
+          .from("members")
+          .select("*")
+          .eq("user_id", userId)
+          .single();
+
         if (cancelled) return;
+
         if (fetchError) {
           setError("No se encontró tu perfil de miembro.");
         } else {
           setMember(data as Member);
         }
-        setLoading(false);
-      });
+      } catch {
+        // fetch rechaza (en vez de resolver con error) cuando no hay red.
+        if (!cancelled) setError("Sin conexión.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
 
     return () => {
       cancelled = true;

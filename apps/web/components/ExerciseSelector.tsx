@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRoutineExercises } from "@/lib/hooks/useRoutineExercises";
 import { DAYS_OF_WEEK } from "@/lib/constants";
+import { Button, Input, Select } from "@/components/ui";
 
 export interface ExerciseSelectorResult {
   catalogId: string;
@@ -99,113 +100,81 @@ export default function ExerciseSelector({ anchor, defaultDay, onClose, onAdd }:
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="fixed z-50 w-72 rounded-lg border border-gray-800 bg-bg-secondary p-4 shadow-lg"
+        className="fixed z-50 w-72 rounded border border-border bg-bgPrimary p-4"
         style={{ left, top }}
       >
-        <div className="space-y-3">
-          <div>
-            <label className="mb-1 block text-xs uppercase tracking-wide text-text-secondary">
-              1. Grupo Muscular
-            </label>
-            <select
-              className="input-field"
-              value={groupId}
-              onChange={(e) => handleGroupChange(e.target.value)}
-              autoFocus
-            >
-              <option value="">Elegí un grupo</option>
-              {muscleGroups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="flex flex-col gap-4">
+          <Select
+            label="1. Grupo muscular"
+            value={groupId}
+            onChange={(e) => handleGroupChange(e.target.value)}
+            autoFocus
+            placeholder="Elegí un grupo"
+            options={muscleGroups.map((g) => ({ value: String(g.id), label: g.name }))}
+          />
 
-          <div>
-            <label className="mb-1 block text-xs uppercase tracking-wide text-text-secondary">
-              2. Ejercicio
-            </label>
-            <select
-              className="input-field disabled:cursor-not-allowed disabled:opacity-50"
-              value={catalogId}
-              onChange={(e) => setCatalogId(e.target.value)}
-              disabled={groupId === ""}
-            >
-              <option value="">{groupId === "" ? "Elegí un grupo primero" : "Elegí un ejercicio"}</option>
-              {exercises.map((ex) => (
-                <option key={ex.id} value={ex.id}>
-                  {ex.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Select
+            label="2. Ejercicio"
+            value={catalogId}
+            onChange={(e) => setCatalogId(e.target.value)}
+            disabled={groupId === ""}
+            placeholder={groupId === "" ? "Elegí un grupo primero" : "Elegí un ejercicio"}
+            options={exercises.map((ex) => ({ value: ex.id, label: ex.name }))}
+          />
 
-          <div>
-            <label className="mb-1 block text-xs uppercase tracking-wide text-text-secondary">
-              3. Volumen
-            </label>
+          <div className="flex flex-col gap-1">
+            <span className="text-label text-textSecondary">3. Volumen</span>
             <div className="grid grid-cols-3 gap-2">
-              <input
+              <Input
                 type="number"
                 min={1}
                 max={10}
                 placeholder="Sets"
-                className="input-field font-mono"
+                aria-label="Sets"
+                className="font-mono"
                 value={sets}
                 onChange={(e) => setSets(e.target.value)}
               />
-              <input
+              <Input
                 type="number"
                 min={1}
                 max={50}
                 placeholder="Reps"
-                className="input-field font-mono"
+                aria-label="Reps"
+                className="font-mono"
                 value={reps}
                 onChange={(e) => setReps(e.target.value)}
               />
-              <input
+              <Input
                 type="number"
                 min={1}
                 max={999}
                 step="0.5"
                 placeholder="Kg"
-                className="input-field font-mono"
+                aria-label="Peso en kilogramos"
+                className="font-mono"
                 value={weight}
                 onChange={(e) => setWeight(e.target.value)}
               />
             </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs uppercase tracking-wide text-text-secondary">
-              4. Día
-            </label>
-            <select className="input-field" value={day} onChange={(e) => setDay(Number(e.target.value))}>
-              {DAYS_OF_WEEK.map((d) => (
-                <option key={d.value} value={d.value}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Select
+            label="4. Día"
+            value={day}
+            onChange={(e) => setDay(Number(e.target.value))}
+            options={DAYS_OF_WEEK.map((d) => ({ value: String(d.value), label: d.label }))}
+          />
 
-          {error && <p className="text-xs text-error">{error}</p>}
+          {error && <p className="text-small text-error">{error}</p>}
 
-          <div className="flex gap-2 pt-1">
-            <button
-              className="flex-1 rounded bg-gray-700 py-2 text-sm text-white hover:bg-gray-600"
-              onClick={onClose}
-            >
+          <div className="flex gap-2">
+            <Button variant="secondary" className="flex-1" onClick={onClose}>
               Cancelar
-            </button>
-            <button
-              className="btn-primary flex-1 disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={handleAdd}
-              disabled={groupId === "" || !catalogId}
-            >
+            </Button>
+            <Button className="flex-1" onClick={handleAdd} disabled={groupId === "" || !catalogId}>
               Agregar
-            </button>
+            </Button>
           </div>
         </div>
       </div>

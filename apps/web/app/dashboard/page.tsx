@@ -13,19 +13,24 @@ export default function DashboardHome() {
 
   return (
     <div>
-      <h1 className="mb-8 text-2xl font-semibold">Bienvenido, {name}</h1>
+      <h1 className="mb-8 text-h1">Bienvenido, {name}</h1>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Link href="/dashboard/routines/create" className="card text-center hover:border-primary">
-          <p className="font-medium">Crear Rutina</p>
-        </Link>
-        <Link href="/dashboard/routines" className="card text-center hover:border-primary">
-          <p className="font-medium">Ver Mis Rutinas</p>
-        </Link>
-        <Link href="/dashboard/members" className="card text-center hover:border-primary">
-          <p className="font-medium">Ver Miembros</p>
-        </Link>
+        <ShortcutCard href="/dashboard/routines/create">Crear rutina</ShortcutCard>
+        <ShortcutCard href="/dashboard/routines">Ver mis rutinas</ShortcutCard>
+        <ShortcutCard href="/dashboard/members">Ver miembros</ShortcutCard>
       </div>
     </div>
+  );
+}
+
+function ShortcutCard({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="rounded border border-border bg-bgPrimary p-6 text-center text-body font-medium text-textPrimary transition-colors hover:border-accent hover:bg-bgTertiary"
+    >
+      {children}
+    </Link>
   );
 }

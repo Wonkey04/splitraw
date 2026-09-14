@@ -1,5 +1,7 @@
 "use client";
 
+import { Button, Card } from "@/components/ui";
+
 interface InvitationCodeCardProps {
   code: string;
   regenerating: boolean;
@@ -22,36 +24,32 @@ export default function InvitationCodeCard({
   )}`;
 
   return (
-    <div className="card">
-      <h2 className="mb-4 text-lg font-semibold">Código de invitación de tu gimnasio</h2>
+    <Card>
+      <h2 className="mb-4 text-h3">Código de invitación de tu gimnasio</h2>
 
-      <div className="rounded-lg bg-bg px-4 py-4">
-        <p className="select-all font-mono text-3xl font-bold text-primary">{code}</p>
-        <p className="mt-1 text-sm text-text-secondary">
+      <div className="rounded border border-border bg-bgSecondary p-4">
+        <p className="select-all font-mono text-h1 text-accent">{code}</p>
+        <p className="mt-2 text-body text-textSecondary">
           Compartí este código con tus alumnos para que se registren en la app.
         </p>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-3">
-        <button className="btn-primary flex-1" onClick={onCopy} disabled={regenerating}>
-          {copied ? "Copiado ✓" : "Copiar"}
-        </button>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button className="flex-1" onClick={onCopy} disabled={regenerating}>
+          {copied ? "Copiado" : "Copiar"}
+        </Button>
         <a
           href={whatsappHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 rounded bg-[#25D366] px-4 py-2 text-center font-medium text-white hover:brightness-95"
+          className="flex-1 rounded border border-border px-4 py-2 text-center text-body font-medium text-textPrimary transition-colors hover:bg-bgTertiary"
         >
           Enviar por WhatsApp
         </a>
-        <button
-          className="flex-1 rounded bg-error px-4 py-2 font-medium text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={onRegenerate}
-          disabled={regenerating}
-        >
+        <Button variant="destructive" className="flex-1" onClick={onRegenerate} disabled={regenerating}>
           {regenerating ? "Regenerando..." : "Regenerar"}
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }

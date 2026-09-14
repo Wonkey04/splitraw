@@ -10,6 +10,7 @@ import type { RoutineTemplate } from "@/lib/types";
 export default function RoutinesListPage() {
   const { profile, loading: profileLoading } = useUserProfile();
   const [templates, setTemplates] = useState<RoutineTemplate[]>([]);
+  const [organizationName, setOrganizationName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,16 +25,23 @@ export default function RoutinesListPage() {
 
     async function loadTemplates() {
       try {
-        const { data, error: fetchError } = await supabase
-          .from("routine_templates")
-          .select("*")
-          .eq("organization_id", profile!.organization_id)
-          .order("created_at", { ascending: false });
+        const [templatesRes, orgRes] = await Promise.all([
+          supabase
+            .from("routine_templates")
+            .select("*")
+            .eq("organization_id", profile!.organization_id)
+            .order("created_at", { ascending: false }),
+          supabase.from("organizations").select("name").eq("id", profile!.organization_id).single(),
+        ]);
 
-        if (fetchError) {
+        if (templatesRes.error) {
           setError("No se pudieron cargar las rutinas.");
         } else {
-          setTemplates(data as RoutineTemplate[]);
+          setTemplates(templatesRes.data as RoutineTemplate[]);
+        }
+
+        if (!orgRes.error && orgRes.data) {
+          setOrganizationName(orgRes.data.name as string);
         }
       } catch {
         setError("No se pudieron cargar las rutinas.");
@@ -47,29 +55,32 @@ export default function RoutinesListPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Mis Rutinas</h1>
-        <Link href="/dashboard/routines/create" className="btn-primary">
-          Crear Rutina
+        <h1 className="text-h1">Rutinas{organizationName ? ` ${organizationName}` : ""}</h1>
+        <Link
+          href="/dashboard/routines/create"
+          className="rounded bg-accent px-4 py-2 text-body font-medium text-white transition-colors hover:bg-accentHover"
+        >
+          Crear rutina
         </Link>
       </div>
 
-      {loading && <p className="text-text-secondary">Cargando...</p>}
-      {error && <p className="text-error">{error}</p>}
+      {loading && <p className="text-body text-textSecondary">Cargando...</p>}
+      {error && <p className="text-body text-error">{error}</p>}
 
       {!loading && !error && templates.length === 0 && (
-        <p className="text-text-secondary">No hay rutinas aún.</p>
+        <p className="text-body text-textSecondary">No hay rutinas aún.</p>
       )}
 
       {!loading && templates.length > 0 && (
-        <div className="space-y-3">
+        <div className="flex flex-col gap-4">
           {templates.map((template) => (
             <Link
               key={template.id}
               href={`/dashboard/routines/${template.id}`}
-              className="card block hover:border-primary"
+              className="block rounded border border-border bg-bgPrimary p-6 transition-colors hover:border-accent hover:bg-bgTertiary"
             >
-              <p className="font-medium">{template.name}</p>
-              <p className="text-sm text-text-secondary">{template.description}</p>
+              <p className="text-body font-medium text-textPrimary">{template.name}</p>
+              <p className="mt-1 text-body text-textSecondary">{template.description}</p>
             </Link>
           ))}
         </div>

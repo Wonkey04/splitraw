@@ -1,0 +1,323 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import {
+  Badge,
+  Button,
+  Input,
+  Modal,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+} from "@/components/ui";
+
+const PAGE_SIZE = 25;
+const SEARCH_DEBOUNCE_MS = 300;
+
+/**
+ * Una fila tal como la devuelven list_branch_members() (trainer) y
+ * list_org_members() (owner). La unica diferencia entre las dos es
+ * `branch_name`, que solo trae la del owner: el trainer ya sabe que todo lo
+ * que ve es de su sucursal.
+ */
+interface MemberRow {
+  member_id: string;
+  email: string;
+  display_name: string | null;
+  branch_name?: string | null;
+  activation_expires_at: string | null;
+  current_routine_id: string | null;
+  current_routine_name: string | null;
+  assigned_at: string | null;
+  total_count: number;
+}
+
+// Estado de plan: se mantiene del panel anterior. Sigue derivado de
+// members.activation_expires_at porque no existe tabla de planes todavia
+// (ver DECISIONS.md); hoy devuelve "sin datos" para todos.
+type PlanStatus = "activo" | "por vencer" | "vencido" | "sin datos";
+
+const planVariant: Record<PlanStatus, "success" | "warning" | "error" | "neutral"> = {
+  activo: "success",
+  "por vencer": "warning",
+  vencido: "error",
+  "sin datos": "neutral",
+};
+
+const DAYS_TO_WARN = 7;
+
+function planStatusOf(expiresAtIso: string | null): PlanStatus {
+  if (!expiresAtIso) return "sin datos";
+
+  const expiresAt = new Date(expiresAtIso).getTime();
+  const now = Date.now();
+
+  if (expiresAt < now) return "vencido";
+  if (expiresAt - now < DAYS_TO_WARN * 24 * 60 * 60 * 1000) return "por vencer";
+  return "activo";
+}
+
+interface PendingChange {
+  memberId: string;
+  memberName: string;
+  routineName: string;
+}
+
+export interface MembersSectionProps {
+  /**
+   * "branch" -> list_branch_members: solo la sucursal del trainer.
+   * "org"    -> list_org_members: toda la organizacion, con columna de
+   *             sucursal. El alcance lo decide la RPC, no el cliente.
+   */
+  scope: "branch" | "org";
+  /** Base de la ruta de asignar: `${assignHrefBase}/<id>/assign-routine`. */
+  assignHrefBase: string;
+  /** Aclaracion de alcance a la derecha del titulo. */
+  scopeLabel?: string | null;
+}
+
+// Seccion "Miembros", compartida entre el panel del TRAINER y el del
+// GYM_OWNER: la unica diferencia real es que RPC se llama y si se pinta la
+// columna de sucursal. Todo el peso esta en la funcion de Postgres: pagina,
+// busca y trae la rutina actual de cada socio en una sola consulta. Ver 0009
+// (trainer) y 0010 (owner) para por que no es un .select() directo.
+export default function MembersSection({ scope, assignHrefBase, scopeLabel }: MembersSectionProps) {
+  const router = useRouter();
+
+  const [rows, setRows] = useState<MemberRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
+
+  const showBranch = scope === "org";
+
+  // El input se debouncea para no disparar una query por tecla.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(0);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const loadMembers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const rpcName = scope === "org" ? "list_org_members" : "list_branch_members";
+
+      const { data, error: rpcError } = await supabase.rpc(rpcName, {
+        p_search: search || null,
+        p_limit: PAGE_SIZE,
+        p_offset: page * PAGE_SIZE,
+      });
+
+      if (rpcError) {
+        setError("No se pudieron cargar los miembros.");
+        setRows([]);
+        setTotal(0);
+        return;
+      }
+
+      const list = (data as MemberRow[]) ?? [];
+      setRows(list);
+      // total_count viene repetido en cada fila (count(*) OVER ()). Si la
+      // pagina vino vacia no hay de donde sacarlo: es 0.
+      setTotal(list.length > 0 ? Number(list[0].total_count) : 0);
+    } catch {
+      setError("No se pudieron cargar los miembros.");
+    } finally {
+      setLoading(false);
+    }
+  }, [scope, search, page]);
+
+  useEffect(() => {
+    loadMembers();
+  }, [loadMembers]);
+
+  function assignHref(memberId: string) {
+    return `${assignHrefBase}/${memberId}/assign-routine`;
+  }
+
+  function handleChangeRoutine(row: MemberRow) {
+    setPendingChange({
+      memberId: row.member_id,
+      memberName: row.display_name ?? row.email,
+      routineName: row.current_routine_name ?? "sin nombre",
+    });
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const firstShown = total === 0 ? 0 : page * PAGE_SIZE + 1;
+  const lastShown = Math.min(total, page * PAGE_SIZE + rows.length);
+
+  return (
+    <section>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-h3">Miembros</h2>
+        {scopeLabel && <span className="text-small text-textSecondary">{scopeLabel}</span>}
+      </div>
+
+      <div className="mb-2 max-w-sm">
+        <Input
+          aria-label="Buscar miembro por nombre o email"
+          placeholder="Buscar por nombre o email..."
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+        />
+      </div>
+
+      {error && <p className="text-body text-error">{error}</p>}
+
+      {loading && rows.length === 0 && <p className="text-body text-textSecondary">Cargando...</p>}
+
+      {!loading && rows.length === 0 && (
+        <p className="text-body text-textSecondary">
+          {search
+            ? `No hay miembros que coincidan con "${search}".`
+            : scope === "org"
+              ? "Todavía no hay miembros en el gimnasio."
+              : "No hay miembros en tu sucursal."}
+        </p>
+      )}
+
+      {rows.length > 0 && (
+        <>
+          <Table>
+            <TableHead>
+              <TableRow hoverable={false}>
+                <TableHeaderCell className="py-1">Miembro</TableHeaderCell>
+                {showBranch && <TableHeaderCell className="py-1">Sucursal</TableHeaderCell>}
+                <TableHeaderCell className="py-1">Rutina</TableHeaderCell>
+                <TableHeaderCell className="py-1">Plan</TableHeaderCell>
+                <TableHeaderCell className="w-36 py-1 text-right">Acciones</TableHeaderCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {rows.map((row) => {
+                const hasRoutine = Boolean(row.current_routine_id);
+                const name = row.display_name ?? row.email;
+                const planStatus = planStatusOf(row.activation_expires_at);
+
+                return (
+                  <TableRow key={row.member_id}>
+                    <TableCell className="py-1">
+                      <span className="text-textPrimary">{name}</span>
+                      {row.display_name && (
+                        <span className="ml-2 text-small text-textSecondary">{row.email}</span>
+                      )}
+                    </TableCell>
+                    {showBranch && (
+                      <TableCell className="py-1 text-textSecondary">
+                        {row.branch_name ?? "-"}
+                      </TableCell>
+                    )}
+                    <TableCell className="py-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={hasRoutine ? "success" : "neutral"}>
+                          {hasRoutine ? "Con rutina" : "Sin rutina"}
+                        </Badge>
+                        {hasRoutine && (
+                          <span className="text-small text-textSecondary">
+                            {row.current_routine_name}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-1">
+                      <Badge variant={planVariant[planStatus]}>{planStatus}</Badge>
+                    </TableCell>
+                    <TableCell className="py-1 text-right">
+                      {hasRoutine ? (
+                        <button
+                          onClick={() => handleChangeRoutine(row)}
+                          className="rounded text-body text-accent hover:text-accentHover"
+                        >
+                          Cambiar rutina
+                        </button>
+                      ) : (
+                        <Link
+                          href={assignHref(row.member_id)}
+                          className="rounded text-body text-accent hover:text-accentHover"
+                        >
+                          Asignar rutina
+                        </Link>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+
+          <div className="mt-2 flex items-center justify-between gap-4">
+            <span className="text-small text-textSecondary">
+              {firstShown}-{lastShown} de {total}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                disabled={page === 0 || loading}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+              >
+                Anterior
+              </Button>
+              <span className="text-small text-textSecondary">
+                {page + 1} / {totalPages}
+              </span>
+              <Button
+                variant="secondary"
+                disabled={page + 1 >= totalPages || loading}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Nadie deberia pisar una rutina activa sin enterarse de cual era: el
+          modal dice el nombre de la que ya tiene. */}
+      <Modal
+        open={pendingChange !== null}
+        onClose={() => setPendingChange(null)}
+        title="Ya tiene una rutina asignada"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPendingChange(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (pendingChange) router.push(assignHref(pendingChange.memberId));
+              }}
+            >
+              Sí, cambiar
+            </Button>
+          </>
+        }
+      >
+        {pendingChange && (
+          <p>
+            {pendingChange.memberName} ya tiene asignada{" "}
+            <span className="font-medium">{pendingChange.routineName}</span>. ¿Desea cambiarla?
+          </p>
+        )}
+      </Modal>
+    </section>
+  );
+}

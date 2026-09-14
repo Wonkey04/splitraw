@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
-import { colors } from "@/constants/colors";
+import { colors, typography } from "@/theme";
 import { useAuth } from "@/hooks/useAuth";
 
 const MIN_SPLASH_MS = 3000;
@@ -33,13 +33,12 @@ export default function Splash() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bgPrimary,
     alignItems: "center",
     justifyContent: "center",
   },
   logo: {
-    color: colors.text,
-    fontSize: 32,
-    fontWeight: "bold",
+    ...typography.h1,
+    color: colors.textPrimary,
   },
 });

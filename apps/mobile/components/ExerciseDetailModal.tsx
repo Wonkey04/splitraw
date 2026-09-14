@@ -1,5 +1,6 @@
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { colors } from "@/constants/colors";
+import { Button } from "@/components/ui";
+import { colors, overlay, radius, spacing, typography } from "@/theme";
 
 interface ExerciseDetailModalProps {
   visible: boolean;
@@ -21,7 +22,7 @@ export function ExerciseDetailModal({ visible, exercise, onClose }: ExerciseDeta
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={styles.header}>
             <Text style={styles.title}>{exercise.name}</Text>
-            <Pressable onPress={onClose} hitSlop={12}>
+            <Pressable accessibilityLabel="Cerrar" onPress={onClose} hitSlop={12}>
               <Text style={styles.closeX}>✕</Text>
             </Pressable>
           </View>
@@ -39,9 +40,14 @@ export function ExerciseDetailModal({ visible, exercise, onClose }: ExerciseDeta
             <Text style={styles.value}>{exercise.weightKg} kg</Text>
           </View>
 
-          <Pressable style={styles.closeButton} onPress={onClose}>
-            <Text style={styles.closeButtonText}>Cerrar</Text>
-          </Pressable>
+          {/* Placeholder para Phase 2 (registro de series). Deshabilitado por ahora. */}
+          <Button variant="secondary" fullWidth disabled style={styles.logButton}>
+            Registrar serie (próximamente)
+          </Button>
+
+          <Button fullWidth onPress={onClose} style={styles.closeButton}>
+            Cerrar
+          </Button>
         </Pressable>
       </Pressable>
     </Modal>
@@ -51,63 +57,56 @@ export function ExerciseDetailModal({ visible, exercise, onClose }: ExerciseDeta
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: overlay,
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: spacing.lg,
   },
   sheet: {
     width: "100%",
-    maxWidth: 400,
-    backgroundColor: colors.bgSecondary,
+    maxWidth: 480,
+    backgroundColor: colors.bgPrimary,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: radius,
+    padding: spacing.lg,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   title: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: colors.text,
+    ...typography.h3,
+    color: colors.textPrimary,
     flexShrink: 1,
   },
   closeX: {
-    fontSize: 20,
+    ...typography.h3,
     color: colors.textSecondary,
-    paddingLeft: 12,
+    paddingLeft: spacing.md,
   },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   label: {
-    fontSize: 16,
+    ...typography.body,
     color: colors.textSecondary,
   },
   value: {
-    fontSize: 16,
-    color: colors.text,
-    fontWeight: "600",
+    ...typography.body,
+    color: colors.textPrimary,
+    fontWeight: "500",
+  },
+  logButton: {
+    marginTop: spacing.lg,
   },
   closeButton: {
-    marginTop: 20,
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  closeButtonText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: "bold",
+    marginTop: spacing.sm,
   },
 });

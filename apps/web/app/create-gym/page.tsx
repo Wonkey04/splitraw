@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { createGymInvitationCode } from "@/lib/invitationCode";
+import { Button, Card, Input } from "@/components/ui";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -134,100 +135,82 @@ export default function CreateGymPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-text-secondary">
+      <div className="flex min-h-screen items-center justify-center text-body text-textSecondary">
         Cargando...
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-8">
-      <div className="card w-full max-w-sm">
-        <h1 className="mb-1 text-xl font-semibold">SplitRaw Admin</h1>
-        <p className="mb-6 text-sm text-text-secondary">Creá tu gimnasio.</p>
+    <div className="flex min-h-screen items-center justify-center bg-bgSecondary p-8">
+      <Card className="w-full max-w-[400px]">
+        <h1 className="mb-2 text-h2">SplitRaw Admin</h1>
+        <p className="mb-6 text-body text-textSecondary">Creá tu gimnasio.</p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm text-text-secondary">Nombre del gimnasio</label>
-            <input
-              type="text"
-              className="input-field"
-              value={gymName}
-              onChange={(e) => setGymName(e.target.value)}
-              placeholder="Gym Fenix"
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <Input
+            label="Nombre del gimnasio"
+            type="text"
+            value={gymName}
+            onChange={(e) => setGymName(e.target.value)}
+            placeholder="Gym Fénix"
+          />
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm text-text-secondary">Nombre</label>
-              <input
-                type="text"
-                className="input-field"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                placeholder="Juan"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm text-text-secondary">Apellido</label>
-              <input
-                type="text"
-                className="input-field"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                placeholder="Pérez"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm text-text-secondary">Email</label>
-            <input
-              type="email"
-              className="input-field"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="owner@gym.com"
+            <Input
+              label="Nombre"
+              type="text"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="Juan"
+            />
+            <Input
+              label="Apellido"
+              type="text"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              placeholder="Pérez"
             />
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm text-text-secondary">Password</label>
-            <input
-              type="password"
-              className="input-field"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-          </div>
+          <Input
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="owner@gym.com"
+          />
 
-          <div>
-            <label className="mb-1 block text-sm text-text-secondary">Confirmar Password</label>
-            <input
-              type="password"
-              className="input-field"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-          </div>
+          <Input
+            label="Contraseña"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+          />
 
-          {error && <p className="text-sm text-error">{error}</p>}
+          <Input
+            label="Confirmar contraseña"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="••••••••"
+          />
 
-          <button type="submit" className="btn-primary w-full" disabled={submitting}>
-            {submitting ? "Creando gimnasio..." : "Crear Gimnasio"}
-          </button>
+          {error && <p className="text-small text-error">{error}</p>}
+
+          <Button type="submit" fullWidth disabled={submitting}>
+            {submitting ? "Creando gimnasio..." : "Crear gimnasio"}
+          </Button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-text-secondary">
+        <p className="mt-6 text-center text-body text-textSecondary">
           ¿Ya tenés cuenta?{" "}
-          <Link href="/" className="text-primary">
+          <Link href="/" className="rounded text-accent hover:text-accentHover">
             Iniciá sesión
           </Link>
         </p>
-      </div>
+      </Card>
     </div>
   );
 }
