@@ -38,10 +38,22 @@ interface MemberRow {
   total_count: number;
 }
 
-// Estado de plan: se mantiene del panel anterior. Sigue derivado de
-// members.activation_expires_at porque no existe tabla de planes todavia
-// (ver DECISIONS.md); hoy devuelve "sin datos" para todos.
+// Estado del socio: se CALCULA desde members.activation_expires_at, no es un
+// booleano que alguien togglea. Un flag manual es un recordatorio que nadie
+// cumple, y a la semana la lista miente; una fecha es un dato objetivo.
+//
+// "sin datos" (fecha NULL) NO es "vencido": el gimnasio cobra por fuera de
+// SplitRaw, así que un socio del que todavía no se cargó vencimiento no tiene
+// por qué figurar como moroso.
 type PlanStatus = "activo" | "por vencer" | "vencido" | "sin datos";
+
+// El filtro que se le manda a la RPC. Se resuelve en Postgres y no en el
+// cliente por la misma razón que la búsqueda: con el paginado de 25, filtrar
+// después de traer la página daría páginas de tamaño variable y un total mal
+// contado.
+type StatusFilter = "" | "expired" | "active";
+
+const RENEW_DAYS = 30;
 
 const planVariant: Record<PlanStatus, "success" | "warning" | "error" | "neutral"> = {
   activo: "success",
@@ -99,8 +111,14 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
   const [error, setError] = useState<string | null>(null);
 
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
+  const [renewingId, setRenewingId] = useState<string | null>(null);
 
   const showBranch = scope === "org";
+  // Renovar es del dueño: renew_member() (0017) exige GYM_OWNER/ADMIN. El
+  // trainer ve el estado pero no lo cambia — quién está al día es una
+  // decisión de quien cobra.
+  const canRenew = scope === "org";
 
   // El input se debouncea para no disparar una query por tecla.
   useEffect(() => {
@@ -123,6 +141,7 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
         p_search: search || null,
         p_limit: PAGE_SIZE,
         p_offset: page * PAGE_SIZE,
+        p_status: statusFilter || null,
       });
 
       if (rpcError) {
@@ -142,7 +161,7 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
     } finally {
       setLoading(false);
     }
-  }, [scope, search, page]);
+  }, [scope, search, page, statusFilter]);
 
   useEffect(() => {
     loadMembers();
@@ -150,6 +169,28 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
 
   function assignHref(memberId: string) {
     return `${assignHrefBase}/${memberId}/assign-routine`;
+  }
+
+  async function handleRenew(row: MemberRow) {
+    setRenewingId(row.member_id);
+    setError(null);
+
+    const { error: rpcError } = await supabase.rpc("renew_member", {
+      p_member_id: row.member_id,
+      p_days: RENEW_DAYS,
+    });
+
+    setRenewingId(null);
+
+    if (rpcError) {
+      setError(rpcError.message);
+      return;
+    }
+    // Se recarga la página actual en vez de parchear la fila: la RPC decide
+    // la fecha final (extiende desde el vencimiento si todavía estaba al día,
+    // arranca de hoy si ya estaba vencido) y el cliente no debería recalcular
+    // esa regla por su cuenta.
+    await loadMembers();
   }
 
   function handleChangeRoutine(row: MemberRow) {
@@ -171,13 +212,42 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
         {scopeLabel && <span className="text-small text-textSecondary">{scopeLabel}</span>}
       </div>
 
-      <div className="mb-2 max-w-sm">
-        <Input
-          aria-label="Buscar miembro por nombre o email"
-          placeholder="Buscar por nombre o email..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-        />
+      <div className="mb-2 flex flex-wrap items-end gap-2">
+        <div className="max-w-sm flex-1">
+          <Input
+            aria-label="Buscar miembro por nombre o email"
+            placeholder="Buscar por nombre o email..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          />
+        </div>
+        <div className="flex gap-1" role="group" aria-label="Filtrar por estado">
+          {(
+            [
+              ["", "Todos"],
+              ["expired", "Vencidos"],
+              ["active", "Al día"],
+            ] as [StatusFilter, string][]
+          ).map(([value, label]) => (
+            <button
+              key={value || "todos"}
+              type="button"
+              aria-pressed={statusFilter === value}
+              onClick={() => {
+                setStatusFilter(value);
+                setPage(0);
+              }}
+              className={
+                "rounded border px-4 py-2 text-body transition-colors " +
+                (statusFilter === value
+                  ? "border-accent bg-bgTertiary text-textPrimary"
+                  : "border-border text-textSecondary hover:bg-bgTertiary")
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && <p className="text-body text-error">{error}</p>}
@@ -188,9 +258,13 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
         <p className="text-body text-textSecondary">
           {search
             ? `No hay miembros que coincidan con "${search}".`
-            : scope === "org"
-              ? "Todavía no hay miembros en el gimnasio."
-              : "No hay miembros en tu sucursal."}
+            : statusFilter === "expired"
+              ? "Ningún miembro está vencido."
+              : statusFilter === "active"
+                ? "Ningún miembro tiene el plan al día."
+                : scope === "org"
+                  ? "Todavía no hay miembros en el gimnasio."
+                  : "No hay miembros en tu sucursal."}
         </p>
       )}
 
@@ -203,7 +277,7 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
                 {showBranch && <TableHeaderCell className="py-1">Sucursal</TableHeaderCell>}
                 <TableHeaderCell className="py-1">Rutina</TableHeaderCell>
                 <TableHeaderCell className="py-1">Plan</TableHeaderCell>
-                <TableHeaderCell className="w-36 py-1 text-right">Acciones</TableHeaderCell>
+                <TableHeaderCell className="w-56 py-1 text-right">Acciones</TableHeaderCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -241,6 +315,17 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
                       <Badge variant={planVariant[planStatus]}>{planStatus}</Badge>
                     </TableCell>
                     <TableCell className="py-1 text-right">
+                      {canRenew && (
+                        <button
+                          onClick={() => handleRenew(row)}
+                          disabled={renewingId === row.member_id}
+                          className="mr-4 rounded text-body text-accent hover:text-accentHover disabled:text-textSecondary"
+                        >
+                          {renewingId === row.member_id
+                            ? "Renovando..."
+                            : `Renovar ${RENEW_DAYS} días`}
+                        </button>
+                      )}
                       {hasRoutine ? (
                         <button
                           onClick={() => handleChangeRoutine(row)}

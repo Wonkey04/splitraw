@@ -1,139 +1,111 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/hooks/useAuth";
-import { createGymInvitationCode } from "@/lib/invitationCode";
 import { Button, Card, Input } from "@/components/ui";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Pagina "Crear Gimnasio". Un owner nuevo se registra y en el mismo paso
-// crea su organizacion + sucursal por defecto + su user_profile (GYM_OWNER).
-// Al final queda logueado y va directo al dashboard.
+// Paso 2 de 2 del alta self-serve: crear la organización.
+//
+// Antes esta pantalla hacía CUATRO escrituras secuenciales desde el browser
+// (signUp, organizations, branches, user_profiles) más la generación del
+// código. Si fallaba la tercera o la cuarta quedaban un usuario de auth y una
+// organización huérfanos: sin sucursal, sin perfil, y el segundo intento con
+// el mismo email fallaba en signUp. El dueño quedaba trabado sin salida.
+//
+// Ahora es una sola llamada a create_gym_with_owner(), que es una función
+// plpgsql y por lo tanto UNA transacción: o quedan la organización, la
+// sucursal, el perfil y el código, o no queda nada.
 export default function CreateGymPage() {
   const router = useRouter();
-  const { session, loading } = useAuth();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
+  const { session, user, loading } = useAuth();
   const [gymName, setGymName] = useState("");
+  const [city, setCity] = useState("");
+  const [province, setProvince] = useState("");
+  const [branchName, setBranchName] = useState("Sucursal Principal");
+  const [ownerName, setOwnerName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [checking, setChecking] = useState(true);
 
-  // Solo redirige si ya habia sesion ANTES de tocar el formulario. Una vez
-  // que se intenta enviar el form, `hasSubmitted` queda en true para
-  // siempre: signUp() crea la sesion antes de terminar de crear
-  // organizacion/branch/profile, y si algun insert falla despues no
-  // queremos que este efecto tape el error mandando igual al dashboard.
+  // El nombre viene del metadata que dejó /signup. Se deja editable por si el
+  // dueño quiere corregirlo antes de que nazca su perfil.
   useEffect(() => {
-    if (!loading && session && !hasSubmitted) {
-      router.replace("/dashboard");
-    }
-  }, [loading, session, hasSubmitted, router]);
+    const metaName = (user?.user_metadata as { name?: string } | undefined)?.name;
+    if (metaName) setOwnerName((prev) => prev || metaName);
+  }, [user]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-
-    if (!email || !password || !confirmPassword || !firstName || !lastName || !gymName) {
-      setError("Completá todos los campos.");
+  // Guard: quien YA tiene organización no vuelve a ver esta pantalla nunca.
+  // user_profiles.organization_id es NOT NULL, así que la sola existencia de
+  // la fila alcanza como prueba de que el usuario ya está dentro de un gym.
+  // El chequeo también está en la RPC (ALREADY_HAS_ORG): acá es para no
+  // mostrar un formulario que va a rebotar.
+  useEffect(() => {
+    if (loading) return;
+    if (!session) {
+      router.replace("/signup");
       return;
     }
-    if (!EMAIL_RE.test(email)) {
-      setError("El email no es válido.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError("Las contraseñas no coinciden.");
-      return;
-    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("user_profiles")
+        .select("organization_id")
+        .eq("id", session.user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data?.organization_id) router.replace("/dashboard");
+      else setChecking(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, session, router]);
 
-    setHasSubmitted(true);
-    setSubmitting(true);
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      setError(null);
 
-    // 1. Crea el usuario en Supabase Auth.
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-    });
+      if (!gymName.trim() || !branchName.trim()) {
+        setError("El nombre del gimnasio y el de la sucursal son obligatorios.");
+        return;
+      }
 
-    if (signUpError) {
-      setSubmitting(false);
-      setError(signUpError.message);
-      return;
-    }
+      setSubmitting(true);
+      const { error: rpcError } = await supabase.rpc("create_gym_with_owner", {
+        p_gym_name: gymName.trim(),
+        p_city: city.trim(),
+        p_province: province.trim(),
+        p_branch_name: branchName.trim(),
+        p_owner_name: ownerName.trim(),
+      });
 
-    const userId = signUpData.user?.id;
-    if (!userId) {
-      setSubmitting(false);
-      setError("No se pudo crear la cuenta. Intentá de nuevo.");
-      return;
-    }
+      if (rpcError) {
+        setSubmitting(false);
+        // ALREADY_HAS_ORG llega si el usuario abrió dos pestañas y creó el
+        // gimnasio en la otra. No es un error que tenga que leer: ya está.
+        if (rpcError.message.includes("ALREADY_HAS_ORG")) {
+          router.replace("/dashboard");
+          return;
+        }
+        setError(
+          rpcError.message.includes("NOT_AUTHENTICATED")
+            ? "Se cerró tu sesión. Iniciá sesión de nuevo."
+            : `No se pudo crear el gimnasio: ${rpcError.message}`
+        );
+        return;
+      }
 
-    // 2. Crea la organizacion (el gimnasio).
-    const { data: org, error: orgError } = await supabase
-      .from("organizations")
-      .insert({ name: gymName })
-      .select()
-      .single();
+      // El dashboard arranca vacío y con el código a la vista. Sin seeds ni
+      // datos de ejemplo: un gimnasio nuevo no tiene alumnos.
+      router.push("/dashboard");
+    },
+    [gymName, city, province, branchName, ownerName, router]
+  );
 
-    if (orgError || !org) {
-      setSubmitting(false);
-      setError("No se pudo crear el gimnasio: " + (orgError?.message ?? "error desconocido"));
-      return;
-    }
-
-    // 3. Crea la sucursal por defecto de esa organizacion.
-    const { data: branch, error: branchError } = await supabase
-      .from("branches")
-      .insert({ organization_id: org.id, name: "Sucursal Principal" })
-      .select()
-      .single();
-
-    if (branchError || !branch) {
-      setSubmitting(false);
-      setError("No se pudo crear la sucursal: " + (branchError?.message ?? "error desconocido"));
-      return;
-    }
-
-    // 4. Crea el perfil del owner, ligado a la org y sucursal recien creadas.
-    // `phone` es NOT NULL en la base pero este form no lo pide, va en 0.
-    const { error: profileError } = await supabase.from("user_profiles").insert({
-      id: userId,
-      organization_id: org.id,
-      branch_id: branch.id,
-      role: "GYM_OWNER",
-      name: firstName,
-      surname: lastName,
-      phone: 0,
-    });
-
-    if (profileError) {
-      setSubmitting(false);
-      setError("No se pudo crear tu perfil: " + profileError.message);
-      return;
-    }
-
-    // 5. Auto-genera el codigo de invitacion permanente del gimnasio.
-    // Si falla (ej. RLS), NO bloqueamos el signup: el owner ya quedo creado
-    // y en /members hay un boton de respaldo para generarlo a mano. Solo lo
-    // dejamos registrado en consola para poder debuggear.
-    const { error: codeError } = await createGymInvitationCode(org.id);
-    if (codeError) {
-      console.error("No se pudo auto-generar el código de invitación:", codeError);
-    }
-
-    setSubmitting(false);
-    router.push("/dashboard");
-  }
-
-  if (loading) {
+  if (loading || checking) {
     return (
       <div className="flex min-h-screen items-center justify-center text-body text-textSecondary">
         Cargando...
@@ -144,8 +116,10 @@ export default function CreateGymPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-bgSecondary p-8">
       <Card className="w-full max-w-[400px]">
-        <h1 className="mb-2 text-h2">SplitRaw Admin</h1>
-        <p className="mb-6 text-body text-textSecondary">Creá tu gimnasio.</p>
+        <h1 className="mb-2 text-h2">Creá tu gimnasio</h1>
+        <p className="mb-6 text-body text-textSecondary">
+          Paso 2 de 2. Podés sumar más sucursales después.
+        </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Input
@@ -158,43 +132,35 @@ export default function CreateGymPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label="Nombre"
+              label="Ciudad"
               type="text"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              placeholder="Juan"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="Río Tercero"
             />
             <Input
-              label="Apellido"
+              label="Provincia"
               type="text"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              placeholder="Pérez"
+              value={province}
+              onChange={(e) => setProvince(e.target.value)}
+              placeholder="Córdoba"
             />
           </div>
 
           <Input
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="owner@gym.com"
+            label="Sucursal principal"
+            type="text"
+            value={branchName}
+            onChange={(e) => setBranchName(e.target.value)}
+            placeholder="Sucursal Principal"
           />
 
           <Input
-            label="Contraseña"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-          />
-
-          <Input
-            label="Confirmar contraseña"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="••••••••"
+            label="Tu nombre"
+            type="text"
+            value={ownerName}
+            onChange={(e) => setOwnerName(e.target.value)}
+            placeholder="Juan Pérez"
           />
 
           {error && <p className="text-small text-error">{error}</p>}
@@ -203,13 +169,6 @@ export default function CreateGymPage() {
             {submitting ? "Creando gimnasio..." : "Crear gimnasio"}
           </Button>
         </form>
-
-        <p className="mt-6 text-center text-body text-textSecondary">
-          ¿Ya tenés cuenta?{" "}
-          <Link href="/" className="rounded text-accent hover:text-accentHover">
-            Iniciá sesión
-          </Link>
-        </p>
       </Card>
     </div>
   );
