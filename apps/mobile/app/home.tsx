@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { Badge, Card, Icon } from "@/components/ui";
+import { Badge, Banner, Card, Icon } from "@/components/ui";
 import { WeekSelector } from "@/components/WeekSelector";
 import { dayLabel, getTodayDayOfWeek } from "@/constants/days";
 import { supabase } from "@/lib/supabase";
@@ -21,7 +21,10 @@ const todayDayOfWeek = getTodayDayOfWeek();
 // navegación real. "Mi perfil" ya salió de acá: es /profile.
 const UPCOMING_ITEMS = ["Mis rutinas de la semana"];
 
-/** "Hola, Juan" a partir del nombre del member, con el email como respaldo. */
+// "Hola, Juan". El nombre sale del metadata del usuario de auth, que es
+// donde lo deja el registro: `members` NO tiene columna de nombre (se
+// verificó contra la base real), y el `full_name` que se leía antes siempre
+// venía undefined, así que el saludo caía siempre en el email.
 function displayName(fullName?: string | null, email?: string): string {
   const name = fullName?.trim();
   if (name) return name.split(" ")[0];
@@ -35,6 +38,21 @@ function initials(fullName?: string | null, email?: string): string {
     return parts.map((part) => part.charAt(0).toUpperCase()).join("");
   }
   return (email?.charAt(0) ?? "?").toUpperCase();
+}
+
+// Vencido = hay fecha Y ya pasó. Sin fecha NO es vencido: el gimnasio cobra
+// por fuera de SplitRaw, así que un socio del que no se cargó vencimiento no
+// tiene por qué ver un aviso de deuda.
+function isExpired(expiresAt?: string | null): boolean {
+  if (!expiresAt) return false;
+  return new Date(expiresAt).getTime() < Date.now();
+}
+
+function formatExpiry(expiresAt: string): string {
+  return new Date(expiresAt).toLocaleDateString("es-AR", {
+    day: "numeric",
+    month: "long",
+  });
 }
 
 function formatToday(): string {
@@ -95,18 +113,21 @@ export default function Home() {
   const loading = authLoading || memberLoading;
   const error = memberError ?? routineError;
 
+  const profileName = (user?.user_metadata as { name?: string } | undefined)?.name ?? null;
+  const expired = isExpired(member?.activation_expires_at);
+
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials(member?.full_name, member?.email)}</Text>
+            <Text style={styles.avatarText}>{initials(profileName, member?.email)}</Text>
           </View>
 
           <View style={styles.headerText}>
             <Text style={styles.date}>{formatToday()}</Text>
             <Text style={styles.greeting} numberOfLines={1}>
-              Hola, {displayName(member?.full_name, member?.email)}
+              Hola, {displayName(profileName, member?.email)}
             </Text>
           </View>
 
@@ -120,6 +141,20 @@ export default function Home() {
             <Icon name="logout" size={20} color={colors.textSecondary} />
           </Pressable>
         </View>
+
+        {/* Plan vencido: aviso suave y NADA MÁS. No se bloquea el acceso ni
+            se esconde la rutina. El gimnasio cobra por fuera de SplitRaw:
+            nosotros reflejamos el estado del pago, no lo decidimos. Cortarle
+            la rutina al socio por una fecha que quizás ya arregló en el
+            mostrador lo convertiría en un problema nuestro. */}
+        {!loading && expired && member?.activation_expires_at && (
+          <Banner
+            variant="warning"
+            style={styles.banner}
+            title="Tu plan venció"
+            message={`Venció el ${formatExpiry(member.activation_expires_at)}. Hablá con tu gimnasio para renovarlo.`}
+          />
+        )}
 
         {loading && (
           <View style={styles.center}>
@@ -280,6 +315,9 @@ const styles = StyleSheet.create({
   center: {
     paddingVertical: spacing.xl,
     alignItems: "center",
+  },
+  banner: {
+    marginBottom: spacing.md,
   },
   errorText: {
     ...typography.body,

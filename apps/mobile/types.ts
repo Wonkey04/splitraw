@@ -5,7 +5,14 @@ export interface Member {
   organization_id: string;
   branch_id: string;
   email: string;
-  full_name?: string | null;
+  phone?: string | null;
+  date_of_birth?: string | null;
+  activated_at?: string | null;
+  // Fecha de vencimiento del plan. El estado activo/vencido se CALCULA
+  // comparándola con hoy; no hay booleano que alguien tenga que togglear.
+  // NULL es "sin datos", no "vencido": el gimnasio cobra por fuera de
+  // SplitRaw y un socio sin fecha cargada no es un moroso.
+  activation_expires_at?: string | null;
 }
 
 export interface GymInvitationCode {

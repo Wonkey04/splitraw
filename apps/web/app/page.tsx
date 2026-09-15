@@ -89,7 +89,7 @@ export default function LoginPage() {
 
         <p className="mt-6 text-center text-body text-textSecondary">
           ¿No tenés gimnasio?{" "}
-          <Link href="/create-gym" className="rounded text-accent hover:text-accentHover">
+          <Link href="/signup" className="rounded text-accent hover:text-accentHover">
             Creá tu gimnasio
           </Link>
         </p>
