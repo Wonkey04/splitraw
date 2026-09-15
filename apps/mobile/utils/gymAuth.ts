@@ -1,43 +1,17 @@
 import { supabase } from "@/lib/supabase";
 
-// Errores esperados del flujo de login/signup (código inválido, email ya
-// registrado, etc). login.tsx los muestra tal cual; cualquier excepción que
-// NO sea GymAuthError se interpreta como falla de red ("Sin conexión").
+// Errores esperados del flujo de auth/vinculación. login.tsx y link-gym.tsx
+// los muestran tal cual; cualquier excepción que NO sea GymAuthError se
+// interpreta como falla de red ("Sin conexión").
 export class GymAuthError extends Error {}
 
-interface GymCodeResolution {
-  organizationId: string;
-  branchId: string;
-}
-
-// Resuelve un gym_code a su organización + sucursal por defecto vía RPC
-// (supabase/migrations/0005_gym_signup_rpc.sql). Corre ANTES de cualquier
-// signIn/signUp -> el caller todavía no tiene sesión, así que esto no puede
-// depender de RLS sobre las tablas: la función SECURITY DEFINER es la que
-// hace el lookup con privilegios propios y devuelve solo lo necesario.
-export async function resolveGymCode(code: string): Promise<GymCodeResolution> {
-  const { data, error } = await supabase.rpc("resolve_gym_code", {
-    p_code: code.trim(),
-  });
-
-  if (error) {
-    throw new GymAuthError("No se pudo verificar el código de gimnasio.");
-  }
-
-  const row = data?.[0];
-  if (!row || !row.organization_id) {
-    throw new GymAuthError("Código de gimnasio no válido.");
-  }
-  if (row.is_expired) {
-    throw new GymAuthError("Código inválido (expirado).");
-  }
-
-  return { organizationId: row.organization_id as string, branchId: row.branch_id as string };
-}
-
-// También vía RPC (mismo motivo: sin sesión todavía en login, y en signup
-// no queremos abrir SELECT anónimo sobre members). Devuelve solo un
-// boolean, nunca los datos del member.
+// Chequeo de email vía RPC: el caller todavía no tiene sesión, así que no
+// puede depender de RLS. Devuelve solo un boolean, nunca datos del usuario.
+//
+// La función apunta a auth.users desde 0015. Antes consultaba `members`, o
+// sea "¿este email ya está vinculado a un gimnasio?". Con el flujo nuevo ese
+// estado —registrado pero sin vincular— es el NORMAL, y la app le decía
+// "Email no registrado" a alguien que sí tenía cuenta.
 export async function checkEmailExists(email: string): Promise<boolean> {
   const { data, error } = await supabase.rpc("email_is_registered", {
     check_email: email.trim(),
@@ -50,50 +24,77 @@ export async function checkEmailExists(email: string): Promise<boolean> {
   return Boolean(data);
 }
 
-interface CreateMemberProfileParams {
-  userId: string;
+export interface MemberLink {
+  memberId: string;
   organizationId: string;
-  branchId: string;
-  email: string;
-  name: string;
-  surname: string;
-  phone: string;
+  organizationName: string;
+  branchId: string | null;
+  branchName: string | null;
+  email: string | null;
+  activationExpiresAt: string | null;
+  isExpired: boolean;
 }
 
-// Crea el user_profiles (role: MEMBER) + members del nuevo usuario. Se
-// llama recién después de un signUp exitoso (ya autenticado), así que acá
-// sí aplican las RLS normales de self-insert (user_id/id = auth.uid()).
-export async function createMemberProfile({
-  userId,
-  organizationId,
-  branchId,
-  email,
-  name,
-  surname,
-  phone,
-}: CreateMemberProfileParams): Promise<void> {
-  const { error: profileError } = await supabase.from("user_profiles").insert({
-    id: userId,
-    organization_id: organizationId,
-    branch_id: branchId,
-    role: "MEMBER",
-    name,
-    surname,
-    phone: Number(phone),
-  });
+// ¿Este usuario tiene un vínculo de socio? Es LA pregunta de la bifurcación
+// de arranque: null -> pantalla de vinculación, objeto -> home.
+//
+// Se consulta contra la base y no contra AsyncStorage a propósito: el vínculo
+// es un hecho del servidor, no un dato de sesión. Si viviera en el cliente,
+// borrar los datos de la app o cambiar de teléfono te desvincularía, y un
+// socio dado de baja seguiría entrando hasta que limpiara el cache.
+export async function fetchMemberLink(): Promise<MemberLink | null> {
+  const { data, error } = await supabase.rpc("my_member_link");
 
-  if (profileError) {
-    throw new GymAuthError("No se pudo completar el registro. Intentá de nuevo.");
+  if (error) {
+    throw new GymAuthError("No se pudo verificar tu gimnasio.");
   }
 
-  const { error: memberError } = await supabase.from("members").insert({
-    user_id: userId,
-    organization_id: organizationId,
-    branch_id: branchId,
-    email,
+  const row = data?.[0];
+  if (!row) return null;
+
+  return {
+    memberId: row.member_id as string,
+    organizationId: row.organization_id as string,
+    organizationName: row.organization_name as string,
+    branchId: (row.branch_id as string | null) ?? null,
+    branchName: (row.branch_name as string | null) ?? null,
+    email: (row.email as string | null) ?? null,
+    activationExpiresAt: (row.activation_expires_at as string | null) ?? null,
+    isExpired: Boolean(row.is_expired),
+  };
+}
+
+export type LinkStatus = "linked" | "already_linked" | "invalid" | "limit_reached";
+
+export interface LinkResult {
+  status: LinkStatus;
+  organizationName: string | null;
+  message: string | null;
+}
+
+// El evento de vinculación: pasa UNA vez en la vida del usuario. Toda la
+// lógica (validar el código, chequear el cupo del plan, crear `members` y
+// `user_profiles` con el rol forzado a MEMBER) vive en la RPC, en una sola
+// transacción. Antes eran dos inserts sueltos desde el cliente: si el segundo
+// fallaba quedaba un perfil sin socio, y el rol viajaba como parámetro.
+export async function linkMemberByCode(code: string, name?: string | null): Promise<LinkResult> {
+  const { data, error } = await supabase.rpc("link_member_by_code", {
+    p_code: code.trim().toUpperCase(),
+    p_name: name?.trim() || null,
   });
 
-  if (memberError) {
-    throw new GymAuthError("No se pudo completar el registro. Intentá de nuevo.");
+  if (error) {
+    throw new GymAuthError("No se pudo verificar el código. Intentá de nuevo.");
   }
+
+  const row = data?.[0];
+  if (!row) {
+    throw new GymAuthError("No se pudo verificar el código. Intentá de nuevo.");
+  }
+
+  return {
+    status: row.status as LinkStatus,
+    organizationName: (row.organization_name as string | null) ?? null,
+    message: (row.message as string | null) ?? null,
+  };
 }

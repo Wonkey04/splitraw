@@ -55,7 +55,12 @@ export default function RoutinesListPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-h1">Rutinas{organizationName ? ` ${organizationName}` : ""}</h1>
+        <h1 className="text-h1">
+          Rutinas
+          {organizationName && (
+            <span className="text-textSecondary"> · {organizationName}</span>
+          )}
+        </h1>
         <Link
           href="/dashboard/routines/create"
           className="rounded bg-accent px-4 py-2 text-body font-medium text-white transition-colors hover:bg-accentHover"

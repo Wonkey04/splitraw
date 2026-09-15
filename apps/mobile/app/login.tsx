@@ -4,16 +4,19 @@ import { router } from "expo-router";
 import { Button, Input } from "@/components/ui";
 import { colors, spacing, typography } from "@/theme";
 import { useSupabaseAuth } from "@/hooks/useSupabaseAuth";
-import { isValidEmail, isValidPhone } from "@/utils/validation";
+import { isValidEmail } from "@/utils/validation";
 
+// Login y registro del socio.
+//
+// El campo "Código de gimnasio" se sacó de las dos pantallas. Era el primer
+// campo del formulario y se pedía en CADA ingreso, cuando en realidad es un
+// evento que pasa una sola vez en la vida del usuario. Ahora el registro es
+// email + contraseña + nombre, y la vinculación vive en /link-gym.
 export default function Login() {
   const [mode, setMode] = useState<"login" | "signup">("login");
-  const [gymCode, setGymCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [surname, setSurname] = useState("");
-  const [phone, setPhone] = useState("");
   const [fieldError, setFieldError] = useState<string | null>(null);
 
   const { loading, error, setError, login, signup } = useSupabaseAuth();
@@ -33,10 +36,6 @@ export default function Login() {
   async function handleSubmit() {
     clearErrors();
 
-    if (!gymCode.trim()) {
-      setFieldError("Ingresá el código de tu gimnasio.");
-      return;
-    }
     if (!isValidEmail(email)) {
       setFieldError("Email inválido.");
       return;
@@ -52,34 +51,19 @@ export default function Login() {
 
     if (isSignup) {
       if (!name.trim()) {
-        setFieldError("Nombre requerido.");
-        return;
-      }
-      if (!surname.trim()) {
-        setFieldError("Apellido requerido.");
-        return;
-      }
-      if (!phone.trim()) {
-        setFieldError("Teléfono requerido.");
-        return;
-      }
-      if (!isValidPhone(phone)) {
-        setFieldError("Solo números permitidos.");
+        setFieldError("Ingresá tu nombre.");
         return;
       }
 
-      const ok = await signup({
-        gymCode,
-        email,
-        password,
-        name: name.trim(),
-        surname: surname.trim(),
-        phone: phone.trim(),
-      });
-      if (ok) router.replace("/home");
+      const ok = await signup({ email, password, name: name.trim() });
+      // Recién registrado: no puede tener vínculo todavía, así que va directo
+      // a vincularse. No se le pregunta el código antes de tener cuenta.
+      if (ok) router.replace("/link-gym");
     } else {
-      const ok = await login({ gymCode, email, password });
-      if (ok) router.replace("/home");
+      const ok = await login({ email, password });
+      // El index resuelve la bifurcación (¿tiene vínculo?) consultando la
+      // base. Acá no se decide: el dato no está en el cliente.
+      if (ok) router.replace("/");
     }
   }
 
@@ -90,19 +74,6 @@ export default function Login() {
     >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>BulkNode</Text>
-
-        <Input
-          label="Código de gimnasio"
-          containerStyle={styles.field}
-          value={gymCode}
-          onChangeText={(value) => {
-            setGymCode(value);
-            clearErrors();
-          }}
-          placeholder="GYM-001"
-          autoCapitalize="characters"
-          autoCorrect={false}
-        />
 
         <Input
           label="Email"
@@ -131,41 +102,16 @@ export default function Login() {
         />
 
         {isSignup && (
-          <>
-            <Input
-              label="Nombre"
-              containerStyle={styles.field}
-              value={name}
-              onChangeText={(value) => {
-                setName(value);
-                clearErrors();
-              }}
-              placeholder="Juan"
-            />
-
-            <Input
-              label="Apellido"
-              containerStyle={styles.field}
-              value={surname}
-              onChangeText={(value) => {
-                setSurname(value);
-                clearErrors();
-              }}
-              placeholder="Pérez"
-            />
-
-            <Input
-              label="Teléfono"
-              containerStyle={styles.field}
-              value={phone}
-              onChangeText={(value) => {
-                setPhone(value);
-                clearErrors();
-              }}
-              placeholder="3511234567"
-              keyboardType="number-pad"
-            />
-          </>
+          <Input
+            label="Nombre"
+            containerStyle={styles.field}
+            value={name}
+            onChangeText={(value) => {
+              setName(value);
+              clearErrors();
+            }}
+            placeholder="Juan"
+          />
         )}
 
         {displayError && <Text style={styles.error}>{displayError}</Text>}

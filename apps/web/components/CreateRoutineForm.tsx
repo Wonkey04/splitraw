@@ -73,6 +73,15 @@ export interface CreateRoutineFormProps {
   assignHrefBase: string;
 }
 
+// Clave estable para un ejercicio que no existe en `exercise_catalog`.
+// `exercises` guarda el nombre como texto libre, sin FK al catalogo, asi que
+// para esos ejercicios no hay id real: se usa el nombre normalizado como
+// identidad, que es lo unico que los distingue de forma consistente entre
+// recargas. El prefijo evita que choque con un uuid del catalogo.
+function catalogKeyForName(name: string): string {
+  return `name:${name.trim().toLowerCase()}`;
+}
+
 export default function CreateRoutineForm({
   basePath,
   membersPath,
@@ -192,7 +201,14 @@ export default function CreateRoutineForm({
           const catalogInfo = catalogByName.get(ex.name);
           row = {
             rowId: crypto.randomUUID(),
-            catalogId: catalogInfo?.id ?? crypto.randomUUID(),
+            // Si el nombre no matchea el catalogo, la clave se deriva del
+            // NOMBRE y no de un uuid random. Con el uuid, el dedupe de
+            // handleCascadeAdd (que compara por catalogId) nunca encontraba
+            // la fila y agregar el mismo ejercicio desde la cascada creaba
+            // una fila duplicada. Pasa seguido: el catalogo esta en ingles y
+            // las rutinas reales del gimnasio piloto estan en castellano, asi
+            // que 18 de 22 nombres no matchean.
+            catalogId: catalogInfo?.id ?? catalogKeyForName(ex.name),
             catalogName: ex.name,
             muscleGroupName: catalogInfo?.muscleGroupName ?? "",
             cells: {},

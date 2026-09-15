@@ -1,7 +1,16 @@
 export interface Organization {
   id: string;
   name: string;
-  invitation_code_id?: string | null;
+  // Plan del gimnasio. Los límites que impone están en los triggers de 0016,
+  // no en el cliente: acá sólo se usa para decidir qué mostrar.
+  plan: "free" | "pro" | "enterprise";
+  // El código de vinculación vive acá desde 0014. `invitation_code_id` es el
+  // puntero a la tabla vieja gym_invitation_codes, que quedó sin uso pero no
+  // se dropeó (es el respaldo del backfill).
+  invitation_code?: string | null;
+  city?: string | null;
+  province?: string | null;
+  invitation_code_id?: string;
   created_at?: string;
 }
 

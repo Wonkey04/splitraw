@@ -120,6 +120,16 @@ export async function POST(request: Request) {
     .single();
 
   if (insertError || !invitation) {
+    // El trigger de límite de plan (0016) levanta P0001 con el mensaje ya
+    // escrito para el dueño ("Límite del plan free alcanzado: hasta 3
+    // entrenadores..."). Se pasa tal cual, con 409, en vez de envolverlo en
+    // un 500 genérico: no es un fallo del servidor, es una respuesta.
+    //
+    // OJO: este insert usa la service_role key, que se saltea la RLS pero NO
+    // los triggers. Por eso el cupo se respeta igual desde acá.
+    if (insertError?.code === "P0001") {
+      return bad(insertError.message, 409);
+    }
     return bad("No se pudo crear la invitación: " + (insertError?.message ?? "error desconocido"), 500);
   }
 

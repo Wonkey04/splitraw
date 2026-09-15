@@ -7,39 +7,18 @@ const KEYS = {
   gymCode: "gym_code",
 } as const;
 
-export interface GymSession {
-  userId: string;
-  organizationId: string;
-  branchId: string;
-  gymCode: string;
-}
-
-// El token de sesión ya lo persiste supabase-js solo (ver lib/supabase.ts,
-// storage: AsyncStorage). Acá solo cacheamos el contexto de gym (org/branch)
-// para tenerlo disponible sync/sin ir a la red apenas se loguea.
-export async function saveGymSession(session: GymSession): Promise<void> {
-  await AsyncStorage.multiSet([
-    [KEYS.userId, session.userId],
-    [KEYS.organizationId, session.organizationId],
-    [KEYS.branchId, session.branchId],
-    [KEYS.gymCode, session.gymCode],
-  ]);
-}
-
-export async function loadGymSession(): Promise<GymSession | null> {
-  const entries = await AsyncStorage.multiGet(Object.values(KEYS));
-  const map = Object.fromEntries(entries);
-
-  const userId = map[KEYS.userId];
-  const organizationId = map[KEYS.organizationId];
-  const branchId = map[KEYS.branchId];
-  const gymCode = map[KEYS.gymCode];
-
-  if (!userId || !organizationId || !branchId || !gymCode) return null;
-
-  return { userId, organizationId, branchId, gymCode };
-}
-
+// El contexto de gimnasio YA NO SE CACHEA acá.
+//
+// Estas cuatro claves guardaban organización, sucursal y código del socio
+// para tenerlos sin ir a la red. Se dejaron de escribir porque el vínculo es
+// un hecho del servidor, no un dato de sesión: vive en la tabla `members` y
+// se consulta con my_member_link(). Cachearlo traía dos problemas reales —
+// cambiar de teléfono o borrar los datos de la app te "desvinculaba", y un
+// socio dado de baja seguía entrando hasta que el cache se limpiara solo.
+// (loadGymSession, además, no tenía un solo caller.)
+//
+// clearGymSession queda para barrer las claves viejas de los teléfonos que ya
+// las tienen escritas: se llama al cerrar sesión y al borrar la cuenta.
 export async function clearGymSession(): Promise<void> {
   await AsyncStorage.multiRemove(Object.values(KEYS));
 }

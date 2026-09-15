@@ -148,6 +148,19 @@ separada en la lista de rutinas.
 
 ---
 
+## 2026-09 — [SUPERADA] Código de invitación en tabla propia (`gym_invitation_codes`)
+
+> **Superada el 2026-09-15** por "El código de vinculación se muda a
+> `organizations`" (más abajo). La tabla no se dropeó: quedó como respaldo del
+> backfill. Lo que dejó de ser cierto es que el código viva ahí.
+
+La decisión original (migraciones `0001` y `0003`) fue darle al código una
+tabla propia con `UNIQUE(organization_id)` y un puntero de vuelta desde
+`organizations.invitation_code_id`. En la práctica eso era una relación 1-a-1
+disfrazada de tabla, y el `UNIQUE` terminó rompiendo el botón "Regenerar".
+
+---
+
 ## 2026-09 — Invitación de trainer por Resend (no Supabase Auth invite), 30 min de vida
 
 **Decisión:** el alta de un TRAINER arranca con el owner cargando nombre +
@@ -548,6 +561,7 @@ una vez y se reproduce en el otro.
 
 ---
 
+<<<<<<< HEAD
 ## 2026-09 — Asignar rutina: crear y asignar en el mismo paso
 
 **Contexto:** la pantalla de asignar rutina (cards con preview, ya
@@ -672,3 +686,549 @@ de perfil, no un simple "¿estás seguro?".
 ---
 
 
+=======
+---
+
+# Bloque 2026-09-15 — Multi-tenancy real + vinculación de miembros
+
+## [2026-09-15] Las policies `USING (true)` que anulaban todo el aislamiento
+
+**Contexto:** el producto se vendía como multi-gimnasio pero nunca se había
+probado con dos. Al volcar el estado real de RLS aparecieron cuatro policies
+PERMISSIVE con `USING (true)` / `WITH CHECK (true)` sobre `organizations` y
+`branches`, conviviendo con `organizations_select_own` y
+`branches_select_own_org` (`0008:128-141`), que están bien escritas. En
+Postgres varias policies PERMISSIVE sobre la misma tabla y el mismo comando se
+combinan con **OR**: la permisiva gana siempre. Las acotadas no hacían nada.
+Cualquier usuario autenticado listaba todas las organizaciones y todas las
+sucursales de todos los gimnasios, y podía crear organizaciones y sucursales
+en cualquiera.
+
+**Decisión:** dropearlas (`0013`) y reponer solo lo que cada rol necesita:
+SELECT acotado por `current_profile_org()`, INSERT/UPDATE de sucursales
+limitado a GYM_OWNER/ADMIN de la propia organización. El INSERT de
+`organizations` queda **sin ninguna policy**: crear un gimnasio pasa a ser
+exclusivamente `create_gym_with_owner()`.
+
+**Justificación:** esto iba primero y bloqueaba todo lo demás. El criterio de
+aceptación del bloque —dos gimnasios que no se ven entre sí— es imposible de
+cumplir mientras exista una sola policy abierta, por más flujo nuevo que se
+construya encima. Agregar policies acotadas sin dropear las permisivas no
+habría cambiado absolutamente nada, y es justo el error que ya estaba cometido.
+
+**Alternativas descartadas:** (a) convertir las permisivas en RESTRICTIVE, que
+las haría AND en vez de OR — funciona, pero deja en la base dos capas de
+policies que hay que leer juntas para entender qué pasa, y la próxima persona
+que agregue una permisiva vuelve a abrir todo; (b) filtrar por organización en
+cada query del cliente, que es lo que la app ya hace en algunos lados y no
+sirve: el browser tiene la anon key y le pega directo al REST.
+
+**Consecuencias:** el aislamiento ahora depende de una sola capa, legible de
+corrido. Queda más difícil "probar algo rápido" desde el SQL editor con un
+usuario cualquiera, que es exactamente lo que se quiere. Toda policy nueva
+sobre una tabla con datos de gimnasio tiene que ir acotada por
+`current_profile_org()` desde el primer día.
+
+**Archivos / migraciones afectadas:** `supabase/migrations/0013_tenant_isolation_repair.sql`.
+
+---
+
+## [2026-09-15] `gym_invitation_codes` tenía RLS apagado
+
+**Contexto:** la tabla que guarda el código de cada gimnasio —lo único que
+separa a un gimnasio de otro a la hora de vincularse— tenía RLS desactivado.
+No era una policy mal escrita: era la tabla abierta. Cualquiera con la anon
+key, **sin siquiera estar autenticado**, se llevaba los códigos de todos los
+gimnasios. La policy `gym_invitation_codes_select` de `0004:21-26` existía,
+pero con RLS apagado era decorativa.
+
+**Decisión:** `ENABLE ROW LEVEL SECURITY` y reemplazar el `USING (true)` por
+`organization_id = current_profile_org()` (`0013`).
+
+**Justificación:** con un código ajeno, cualquiera se vinculaba como socio a
+cualquier gimnasio. La anon key está embebida en la app móvil: no es un
+secreto, es un identificador público.
+
+**Alternativas descartadas:** dropear la tabla directamente, ya que el código
+se muda a `organizations` en `0014`. Se descartó porque es el respaldo del
+backfill: si el backfill sale mal, esa tabla es la única copia de los códigos
+ya repartidos. Se protege ahora y se dropea cuando el backfill esté confirmado.
+
+**Consecuencias:** queda una tabla protegida y sin uso. Es deuda menor y
+consciente, anotada acá para que quien la encuentre sepa que no se olvidó.
+
+**Archivos / migraciones afectadas:** `0013_tenant_isolation_repair.sql`.
+
+---
+
+## [2026-09-15] El socio no puede editar su propia fila de `members`
+
+**Contexto:** `members_update_self` (`0004:39-45`) dejaba que cualquier socio
+hiciera UPDATE sobre su propia fila. Cuando se escribió, `members` solo tenía
+organización y sucursal y la policy parecía inofensiva. No lo era: permitía
+mudarse solo a cualquier gimnasio. Y al sumar el vencimiento (Parte 5) pasaba a
+permitir que el socio **se renovara el plan a sí mismo** con un `PATCH` al REST.
+
+**Decisión:** dropear `members_update_self` y `members_insert_self`. La
+creación del socio pasa a ser exclusiva de `link_member_by_code()` y la
+renovación exclusiva de `renew_member()`, ambas SECURITY DEFINER con el
+chequeo de permisos explícito adentro. Se agrega `members_select_self`, que es
+lo único que el socio realmente necesita: leer su propia fila.
+
+**Justificación:** un vencimiento que el interesado puede editar no es un
+vencimiento. Y una policy de UPDATE no puede restringir **qué columnas** se
+tocan, así que no había forma de dejarle editar algo inocuo sin darle también
+`organization_id` y `activation_expires_at` — el mismo problema que ya se había
+resuelto con un trigger en `user_profiles` (`0012`).
+
+**Alternativas descartadas:** un trigger `BEFORE UPDATE` que congelara las
+columnas sensibles, como el de `0012`. Se descartó porque acá no queda ninguna
+columna que el socio tenga motivo para editar: la lista de columnas
+permitidas habría quedado vacía, y una policy que no permite nada es una
+policy que no debería existir.
+
+**Consecuencias:** toda escritura sobre `members` pasa por una función con el
+permiso chequeado. Sumar un campo que el socio sí deba editar (un teléfono,
+por ejemplo) requiere una RPC nueva, no reabrir la policy.
+
+**Archivos / migraciones afectadas:** `0013_tenant_isolation_repair.sql`,
+`0015_onboarding_and_linking.sql`, `0017_member_expiry.sql`.
+
+---
+
+## [2026-09-15] El código de vinculación se muda a `organizations`
+
+Supera la decisión marcada como `[SUPERADA]` más arriba.
+
+**Contexto:** el código vivía en `gym_invitation_codes`, con
+`UNIQUE(organization_id)` y un puntero de vuelta desde
+`organizations.invitation_code_id`. Además el botón "Regenerar" estaba roto:
+hacía soft-delete de la fila vigente e insertaba una nueva para la misma
+organización, lo que choca contra ese `UNIQUE`. El insert fallaba con `23505`,
+`lib/invitationCode.ts` lo interpretaba como colisión de código, reintentaba
+cinco veces y se rendía — dejando al gimnasio **sin código activo**, porque el
+viejo ya estaba marcado como borrado.
+
+**Decisión:** `organizations.invitation_code TEXT UNIQUE`, con backfill desde
+la tabla vieja (`0014`). `gym_invitation_codes` no se dropea.
+
+**Justificación:** el `UNIQUE(organization_id)` ya demostraba que nunca hubo
+más de un código por gimnasio: era una relación 1-a-1 disfrazada de tabla. Y el
+plan Pro pide que el dueño pueda **editar** su código, que como columna es un
+UPDATE trivial y como tabla obligaba a decidir si se pisa la fila o se inserta
+otra — que es justo la ambigüedad que produjo el bug.
+
+**Alternativas descartadas:** arreglar "Regenerar" reusando la fila en vez de
+insertar. Resolvía el bug sin tocar el modelo, pero dejaba el código como una
+entidad con historial que nadie consulta, y la edición de Pro seguía siendo
+más complicada de lo necesario.
+
+**Consecuencias:** desaparece un JOIN de todas las lecturas del código. Se
+pierde el historial de códigos anteriores (que no se usaba en ninguna
+pantalla). `invitation_code_id` queda como columna muerta apuntando al
+respaldo; se saca cuando se dropee la tabla vieja.
+
+**Archivos / migraciones afectadas:** `0014_organizations_tenant_columns.sql`,
+`apps/web/lib/invitationCode.ts`, `apps/web/components/InvitationCodeCard.tsx`,
+`apps/web/lib/types.ts`.
+
+---
+
+## [2026-09-15] Formato del código: 8 caracteres, sin ambiguos, y los de 6 siguen valiendo
+
+**Contexto:** el generador viejo hacía 6 caracteres con `Math.random()` en el
+browser. Ya hay códigos de 6 repartidos en el gimnasio piloto.
+
+**Decisión:** los nuevos son de 8, generados en Postgres con
+`gen_random_bytes` (`generate_invitation_code()`, `0014`), sobre el charset
+`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`. El CHECK de la columna acepta **6 a 8**,
+no 8 exactos.
+
+**Justificación:** el charset excluye I, O, 0 y 1 porque el código se dicta en
+voz alta en el mostrador — el costo de una confusión lo paga el socio, que
+escribe mal y no entra. `Math.random()` es predecible y esto es el único
+secreto que separa un gimnasio de otro, así que la generación tiene que ser
+criptográfica y del lado del servidor. El rango 6-8 existe para no invalidar
+de golpe códigos que ya están en manos de socios que todavía no se
+registraron: el gimnasio no se enteraría hasta que alguien se quejara.
+
+**Alternativas descartadas:** regenerar todos los códigos en la migración para
+tener formato uniforme. Más prolijo en la base, y rompe silenciosamente a
+gente real.
+
+**Consecuencias:** la validación del campo editable de Pro acepta 6-8, no 8.
+Cuando no queden códigos de 6 en circulación se puede endurecer el CHECK; eso
+requiere confirmar contra la base, no asumirlo.
+
+**Archivos / migraciones afectadas:** `0014_organizations_tenant_columns.sql`,
+`apps/web/lib/invitationCode.ts`.
+
+---
+
+## [2026-09-15] Onboarding self-serve en una transacción, salvo `auth.signUp`
+
+**Contexto:** `/create-gym` hacía cuatro escrituras secuenciales desde el
+browser: `signUp`, `organizations`, `branches`, `user_profiles`, más la
+generación del código. Si fallaba la tercera o la cuarta quedaban un usuario de
+auth y una organización huérfanos —sin sucursal, sin perfil— y el segundo
+intento con el mismo email fallaba en `signUp`. El dueño quedaba trabado sin
+ninguna salida desde la app.
+
+**Decisión:** una RPC `create_gym_with_owner()` (`0015`) hace organización +
+sucursal + perfil + código. El alta se parte en dos pantallas: `/signup` crea
+la cuenta, `/create-gym` crea la organización.
+
+**Justificación:** una función plpgsql **ya es** una transacción — no hacía
+falta ninguna maquinaria, solo mover los inserts adentro. `auth.signUp()` no
+puede correr dentro de Postgres, así que el usuario de auth queda
+necesariamente afuera; se acepta y se dice en voz alta en vez de fingir
+atomicidad total. Partir las pantallas hace que ese límite sea recuperable: si
+la organización falla, la cuenta ya existe y el dueño vuelve a `/create-gym` y
+sigue, en vez de chocar contra un `signUp` duplicado.
+
+**Alternativas descartadas:** (a) crear el usuario de auth desde una Edge
+Function con la `service_role` key, para meter todo en un solo paso — suma un
+servicio más al camino crítico del alta y la transacción de Postgres seguiría
+sin cubrir `auth.users`; (b) dejar los inserts en el cliente con rollback
+manual, que es escribir a mano lo que la base ya hace bien.
+
+**Consecuencias:** cambiar qué se crea al dar de alta un gimnasio ahora es
+tocar una función SQL, no cinco llamadas en un componente. El guard
+`ALREADY_HAS_ORG` vive en la RPC, así que vale también si alguien le pega
+directo al REST.
+
+**Archivos / migraciones afectadas:** `0015_onboarding_and_linking.sql`,
+`apps/web/app/signup/page.tsx` (nuevo), `apps/web/app/create-gym/page.tsx`,
+`apps/web/lib/hooks/useOrganization.ts` (nuevo).
+
+---
+
+## [2026-09-15] El código sale del login y pasa a ser un evento único
+
+**Contexto:** `apps/mobile/app/login.tsx` pedía el código del gimnasio como
+primer campo, en login **y** en registro, cada vez. Y no validaba nada:
+`useSupabaseAuth` lo resolvía, lo cacheaba en AsyncStorage y **nunca** lo
+comparaba contra `members.organization_id`. Entrar con el código de otro
+gimnasio funcionaba igual. El comentario de `0004` que decía que re-loguearse
+con otro código pisaba la fila del socio era falso: el código nunca lo hizo.
+
+**Decisión:** el registro es email + contraseña + nombre. Al abrir la app hay
+una sola bifurcación, resuelta con `my_member_link()` contra la base: con
+vínculo va al home, sin vínculo va a `/link-gym`, una pantalla nueva de un
+input y un botón. Una vez vinculado, el código no se vuelve a pedir nunca.
+
+**Justificación:** el código es un evento de vinculación que ocurre una vez en
+la vida del usuario, no una credencial. Pedirlo en cada ingreso le exige al
+socio recordar un dato que le dieron una vez en un papel, para nada: no era ni
+un factor de autenticación, porque no se verificaba contra el vínculo real.
+
+**El vínculo se consulta al servidor, no al cache**, y esto es lo que más
+condiciona hacia adelante: si viviera en AsyncStorage, cambiar de teléfono o
+borrar los datos de la app te desvincularía, y un socio dado de baja seguiría
+entrando hasta que el cache se limpiara solo. Por eso `utils/storage` dejó de
+escribir el contexto de gimnasio.
+
+**Alternativas descartadas:** (a) pedir el código solo en el registro y no en
+el login — mejor que lo que había, pero deja el código como parte del alta de
+cuenta, cuando el usuario puede querer crearse la cuenta antes de pasar por el
+gimnasio; (b) links de invitación por deep link, que es mejor UX pero necesita
+que el gimnasio mande un mensaje por socio, cuando hoy dicta un código en el
+mostrador.
+
+**Consecuencias:** un usuario puede existir sin gimnasio, que antes era
+imposible. Eso obligó a repuntar `email_is_registered()` a `auth.users`
+(consultaba `members`, así que le decía "email no registrado" a alguien que sí
+tenía cuenta y lo dejaba afuera) y a pasar `useCurrentMember` a
+`.maybeSingle()`. Habilita que en el futuro un socio pertenezca a más de un
+gimnasio sin rehacer el flujo.
+
+**Archivos / migraciones afectadas:** `0015_onboarding_and_linking.sql`,
+`apps/mobile/app/login.tsx`, `apps/mobile/app/index.tsx`,
+`apps/mobile/app/link-gym.tsx` (nuevo), `apps/mobile/hooks/useSupabaseAuth.ts`,
+`apps/mobile/utils/gymAuth.ts`, `apps/mobile/utils/storage.ts`,
+`apps/mobile/hooks/useCurrentMember.ts`.
+
+---
+
+## [2026-09-15] Sin aprobación manual del socio: confiar primero, moderar después
+
+**Contexto:** al vincularse con un código válido, el socio podría quedar
+pendiente de que el dueño lo apruebe.
+
+**Decisión:** no hay cola de aprobación. Código válido, socio adentro. El dueño
+lo ve en su lista y puede darlo de baja si no corresponde.
+
+**Justificación:** el código ya es el secreto compartido — quien lo tiene, lo
+recibió del gimnasio. Una cola de aprobación frena al socio **el día que se
+anota**, que es el único día que tiene ganas de instalarse una app y crearse
+una cuenta; si le aparece "esperá que te aprueben", vuelve al papel y no
+vuelve más. El costo del error es asimétrico: un colado en la lista es un clic
+para el dueño, un socio que abandona en el alta no vuelve.
+
+**Alternativas descartadas:** aprobación obligatoria (mata la activación) y
+aprobación opcional configurable por gimnasio (es una preferencia que nadie
+pidió, y agregar un flag antes de tener el problema es adivinar).
+
+**Consecuencias:** si un código se filtra, entran desconocidos; el daño está
+acotado porque un socio solo ve su propia rutina, y el dueño puede cambiar el
+código (en Pro) o pedir que se lo cambiemos. Si aparece abuso real, la cola de
+aprobación se agrega sin rehacer nada: es un estado más en `members`.
+
+**Archivos / migraciones afectadas:** `0015_onboarding_and_linking.sql`
+(`link_member_by_code`), `apps/mobile/app/link-gym.tsx`.
+
+---
+
+## [2026-09-15] El estado del socio se calcula desde una fecha, no es un booleano
+
+**Contexto:** `members` ya tenía `activation_expires_at`, en NULL para todos, y
+el panel del trainer mostraba un estado de plan derivado de esa columna que en
+la práctica decía "sin datos" siempre. La alternativa natural era un booleano
+`activo`.
+
+**Decisión:** el estado se calcula comparando `activation_expires_at` con hoy,
+en los tres lugares donde se muestra (listado del dueño, RPC `my_member_link`,
+home mobile). No existe ninguna columna de estado.
+
+**Justificación:** un booleano hay que acordarse de apagarlo. Nadie entra un
+lunes a marcar como vencidos a los doce socios que vencieron el domingo, así
+que a la semana la lista miente y deja de consultarse. Una fecha es un dato
+objetivo que se ordena, se filtra y se renueva, y el estado siempre está al día
+sin que nadie haga nada.
+
+**NULL no es "vencido", es "sin datos".** Un socio del que todavía no se cargó
+vencimiento no tiene por qué aparecer como moroso: el gimnasio recién empieza a
+usar SplitRaw y no cargó nada todavía.
+
+**Alternativas descartadas:** (a) booleano toggleado a mano, descartado arriba;
+(b) una tabla de pagos/membresías con historial, que es el modelo correcto a
+futuro pero pide definir planes, precios y cobros — y hoy el gimnasio cobra en
+efectivo por fuera. Inventar esa tabla para llenar una columna sería fingir un
+modelo que no existe.
+
+**Consecuencias:** "renovar" es sumarle días a una fecha, no cambiar un estado.
+`renew_member()` extiende desde el vencimiento si el socio estaba al día (no se
+le comen los días pagos) y desde hoy si estaba vencido (no se le regalan los
+días que no pagó). No queda historial de renovaciones: eso llega con la tabla
+de pagos, cuando exista.
+
+**Archivos / migraciones afectadas:** `0017_member_expiry.sql`,
+`apps/web/components/MembersSection.tsx`, `apps/mobile/app/home.tsx`.
+
+---
+
+## [2026-09-15] El socio vencido ve un banner, no un bloqueo
+
+**Contexto:** con el vencimiento calculado, la decisión obvia era cortarle el
+acceso a la rutina al socio vencido.
+
+**Decisión:** banner suave en el home de la app. El acceso **no** se bloquea:
+la rutina se ve completa.
+
+**Justificación:** SplitRaw refleja el estado del pago, no lo decide. El
+gimnasio cobra por fuera, en efectivo y en el mostrador, así que nuestra fecha
+siempre va atrás de la realidad: el socio puede haber pagado hace diez minutos
+y que nadie lo haya cargado todavía. Bloquearlo con ese dato convierte un
+problema de cobranza del gimnasio en un problema de la app — y el que llama
+enojado llama al gimnasio, que es nuestro cliente. Un aviso que el socio le
+lleva al mostrador ayuda a cobrar; una pantalla bloqueada solo genera un
+reclamo.
+
+**Alternativas descartadas:** (a) bloquear el acceso, descartado arriba; (b) no
+mostrar nada, que le saca al gimnasio el único recordatorio automático que
+tendría.
+
+**Consecuencias:** el vencimiento nunca puede usarse como control de acceso
+mientras el pago viva fuera de SplitRaw. Si algún día se cobra desde acá, el
+dato pasa a ser nuestro y esta decisión hay que revisarla — con una entrada
+nueva, no editando esta.
+
+**Archivos / migraciones afectadas:** `apps/mobile/components/ui/Banner.tsx`
+(nuevo), `apps/mobile/app/home.tsx`.
+
+---
+
+## [2026-09-15] Los límites de plan son triggers de Postgres, no validación de UI
+
+**Contexto:** los planes existían como concepto y no restringían nada. Había
+que elegir dónde aplicarlos.
+
+**Decisión:** triggers `BEFORE INSERT` sobre `branches`, `members`,
+`user_profiles WHERE role='TRAINER'` y `trainer_invitations` (`0016`). El
+mensaje se arma en la base, en castellano, nombrando el límite alcanzado y el
+plan que lo levanta, y viaja tal cual hasta la pantalla.
+
+**Justificación:** **esta app no tiene backend.** El browser tiene la anon key
+y le escribe directo a Supabase (`apps/web/lib/supabase.ts:9-14`). Un chequeo
+en el formulario es una sugerencia: se saltea con un `curl` contra
+`/rest/v1/members`. El único lugar donde "backend" existe de verdad es
+Postgres. Un trigger no se puede esquivar — ni siquiera con la `service_role`
+key, que se saltea la RLS pero no los triggers, que es justamente por qué el
+cupo se respeta también en el route handler de invitaciones.
+
+El cupo de trainers se chequea **también al invitar** y no solo al aceptar: si
+solo se validara en `user_profiles`, el dueño mandaría el mail, el entrenador
+elegiría contraseña y recién ahí explotaría — el error le llegaría a la persona
+equivocada, en el peor momento, con una invitación ya quemada.
+
+**Alternativas descartadas:** (a) validar en el cliente, descartado arriba; (b)
+meter los chequeos dentro de cada RPC, que cubre las altas que pasan por RPC y
+deja destapadas las que escriben directo a la tabla; (c) policies de RLS con el
+conteo adentro — funciona, pero una policy solo puede decir "no", sin mensaje:
+el dueño vería "violates row-level security policy" en vez de saber cuántos
+socios le quedan.
+
+**Consecuencias:** el cambio de plan es un `UPDATE organizations SET plan`, sin
+checkout ni pasarela, y el efecto es inmediato. Los límites viven en
+`plan_limit()`, un solo lugar. Todo test de alta masiva tiene que tener el plan
+en cuenta: en `free` el 11º socio rebota.
+
+**Archivos / migraciones afectadas:** `0016_plan_limits.sql`,
+`apps/web/app/api/trainer-invitations/route.ts`,
+`apps/mobile/app/link-gym.tsx`.
+
+---
+
+## [2026-09-15] Dos tablas de log en paralelo, y `member_id` significa dos cosas
+
+**Contexto:** al escribirle policies a las tablas que tenían RLS activo y cero
+policies apareció que conviven `exercise_log` (singular: completado sí/no por
+fecha, lo que usa la Fase 2, `0006`) y `exercise_logs` (plural: peso, reps,
+sets, de la feature de weight logging). La plural estaba **inaccesible**: RLS
+prendido sin una sola policy, o sea que nadie leía ni escribía nada.
+
+Peor: las policies de `exercise_log` comparan `member_id = auth.uid()`,
+mientras que `exercise_logs.member_id` apunta a `members.id`. **La misma
+columna significa dos cosas distintas en dos tablas.**
+
+**Decisión:** no se unifica ni se dropea nada en este bloque. Se declara
+`exercise_log` (singular) como la **canónica** hacia adelante, porque es la que
+la app usa hoy, y se le escriben a `exercise_logs` policies consistentes con
+*su* semántica (`member_id` → `members.id`).
+
+**Justificación:** unificarlas es una migración de datos con dos
+interpretaciones distintas de la misma columna, en el mismo bloque que ya
+reescribe RLS, onboarding, vinculación, límites y vencimiento. Meterlo acá es
+pedir un error silencioso de datos. Documentarlo y dejarlo estable es más
+barato que arreglarlo mal.
+
+**Alternativas descartadas:** (a) dropear `exercise_logs`, que no tiene datos
+en uso — si igual tiene filas, se pierden, y no se verificó; (b) dejarla sin
+policies "porque no se usa", que es lo que ya pasaba: una tabla inaccesible se
+confunde con un bug de app y se debuggea dos veces antes de descubrir por qué.
+
+**Consecuencias:** queda deuda explícita. Quien retome el logging con peso
+tiene que decidir primero si migra `exercise_log` al modelo de `exercise_logs`
+o al revés, y **normalizar qué guarda `member_id`** antes de escribir una línea
+de app.
+
+**Archivos / migraciones afectadas:** `0013_tenant_isolation_repair.sql`.
+
+---
+
+## [2026-09-15] `body_metrics`, `exercise_logs` y `roles`: RLS activo y cero policies
+
+**Contexto:** las tres tenían RLS habilitado sin ninguna policy. Con RLS activo
+y sin policies, Postgres no devuelve nada a nadie: eran tablas muertas.
+
+**Decisión:** `roles` es catálogo global → SELECT para autenticados.
+`body_metrics` son datos del socio → SELECT/INSERT propios (vía `members.user_id
+= auth.uid()`) más SELECT para el staff de la organización, con el trainer
+limitado a su sucursal, igual que `members` en `0008:70-80`. `exercise_logs`,
+según la entrada anterior.
+
+**Justificación:** "RLS activo y sin policies" parece seguro y es la peor
+configuración posible: no protege más que una policy acotada y el síntoma
+—queries que devuelven `[]` sin error— es indistinguible de un bug de la app.
+Se depura dos veces antes de que a alguien se le ocurra mirar `pg_policies`.
+
+**Alternativas descartadas:** apagarles RLS. Sería abrir tres tablas, una de
+ellas con datos de salud del socio (peso, porcentaje de grasa), en el mismo
+bloque cuyo objetivo es cerrar el aislamiento.
+
+**Consecuencias:** `body_metrics` queda lista para cuando exista pantalla; hoy
+no la usa nadie. El chequeo "tablas con RLS y cero policies" quedó en el script
+de auditoría y en el test automatizado, para que no vuelva a pasar inadvertido.
+
+**Archivos / migraciones afectadas:** `0013_tenant_isolation_repair.sql`,
+`supabase/audit/tenant_isolation_audit.sql`.
+
+---
+
+## [2026-09-15] Desvíos del brief y hallazgos sobre la marcha
+
+**1. `user_profiles`: el volcado y el repo se contradicen.** El volcado de
+producción dice que la tabla es `(id, organization_id, branch_id, role, name,
+created_at)`. Pero `0009:48` y `0010:50` arman el nombre con
+`up.name || ' ' || up.surname` —son las RPC del listado de miembros, que según
+este mismo archivo funcionan—, `0011:50` devuelve `up.surname`, `0007:196`
+comenta que `surname` y `phone` son NOT NULL, y `0012:15` agrega `avatar_url`.
+Las dos cosas no pueden ser ciertas: o el volcado vino recortado, o esas cinco
+migraciones nunca se aplicaron.
+
+**En vez de apostar a una lectura, las migraciones aplican en los dos
+escenarios.** `0015` relaja el NOT NULL de `surname` y `phone` **si existen**
+(no las borra, no toca `organization_id`), y `0017` arma el nombre para mostrar
+con `surname` solo si la columna existe, resolviéndolo con un bloque `DO` +
+`EXECUTE`. Es más feo que un `CREATE FUNCTION` directo y es la razón por la que
+la migración no falla a mitad de camino en producción.
+
+**Queda pendiente** correr, contra la base real:
+`SELECT column_name, is_nullable FROM information_schema.columns WHERE
+table_name = 'user_profiles'` — y anotar acá cuál de las dos lecturas era la
+correcta, porque de eso depende si `ProfileForm` y `save_member_profile`
+funcionan hoy.
+
+**2. La falta de baseline de esquema es la deuda que causó todo esto.** El repo
+no tiene el esquema de las tablas: las migraciones arrancan en `0001` asumiendo
+que `organizations`, `members`, `user_profiles` y ocho más ya existen, creadas a
+mano en Supabase. Por eso el estado real de RLS era invisible desde el código,
+y por eso cuatro policies que anulaban el aislamiento pudieron vivir meses sin
+que nadie las viera. Mitigación de este bloque:
+`supabase/audit/tenant_isolation_audit.sql` (solo lectura, se corre antes y
+después) y `supabase/tests/fixture_schema.sql`, que reproduce el esquema de
+producción en un Postgres descartable. **El arreglo de fondo sigue pendiente:**
+volcar el esquema real a `supabase/schema/baseline.sql` y versionarlo.
+
+**3. El test de aislamiento se automatizó en vez de quedar como checklist.** El
+brief pedía un test manual. `supabase/tests/run.sh` levanta un Postgres
+descartable, aplica `0013`-`0017` y corre 47 chequeos: dos gimnasios que no se
+ven entre sí, el socio que no puede auto-renovarse ni mudarse de gimnasio, los
+límites de plan, y las tres reglas de vencimiento. Se hizo así porque el
+criterio de aceptación depende de cómo Postgres combina policies —algo que no
+se puede verificar leyendo el código— y porque un checklist manual se corre una
+vez y no se vuelve a correr nunca. El guion manual por la UI sigue estando, en
+`docs/testing/multi-tenant.md`: cubre lo que el test no puede, que es la
+pantalla.
+
+Dos bugs aparecieron **al correr** ese test y no al escribirlo: el mensaje de
+límite decía "hasta 1 sucursales", y el propio script de auditoría daba falsos
+positivos porque trataba el `with_check` NULL de una policy de SELECT como si
+fuera `true`.
+
+**4. `exercises` sigue sin `organization_id`.** El brief pedía que toda tabla
+con datos de gimnasio lo tuviera NOT NULL. `exercises` cuelga de
+`routine_templates`, que sí lo tiene, y sus policies filtran con un `EXISTS`
+contra el template padre (`0008:43-66`). Agregar la columna implica backfill +
+`SET NOT NULL` + mantenerla sincronizada con el template en cada insert, para
+un dato derivado. Se deja como está, con el filtro transitivo, y se anota acá
+como desvío consciente.
+
+**5. Fix de dedupe en `CreateRoutineForm`, que no estaba en el brief.** Un
+ejercicio cuyo nombre no matchea `exercise_catalog` recibía un
+`crypto.randomUUID()` como `catalogId`, así que el dedupe por `catalogId` nunca
+lo encontraba y volver a agregarlo desde la cascada creaba una fila duplicada.
+Pasa seguido: el catálogo está en inglés y las rutinas del gimnasio piloto en
+castellano, así que 18 de 22 nombres no matchean. Ahora la clave se deriva del
+nombre normalizado.
+
+**La FK `exercises.exercise_catalog_id` sigue pendiente y no entró acá**, por
+decisión explícita: qué hacer con los ejercicios en castellano que no existen
+en el catálogo (¿se agregan?, ¿el catálogo pasa a castellano?) es una decisión
+de producto, no un bug para tapar, y este bloque ya venía cargado.
+
+**6. Se sacó el botón "Regenerar" del código.** No estaba pedido. Además de
+estar roto (ver la entrada del código), invalidaba de golpe todos los códigos
+ya repartidos sin decirle al dueño que eso era lo que hacía. En Pro se
+reemplaza por editar, que es la operación que el dueño realmente quiere.
+>>>>>>> b8360d3e2fc43eeecc0505236a9774f264ef0eba
