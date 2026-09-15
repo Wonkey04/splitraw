@@ -8,3 +8,5 @@ export { Badge } from "./Badge";
 export type { BadgeProps, BadgeVariant } from "./Badge";
 export { Icon } from "./Icon";
 export type { IconName } from "./Icon";
+export { Banner } from "./Banner";
+export type { BannerProps, BannerVariant } from "./Banner";

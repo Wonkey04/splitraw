@@ -1,14 +1,19 @@
 import { useState } from "react";
-import { StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from "react-native";
+import { StyleSheet, StyleProp, Text, TextInput, TextInputProps, TextStyle, View, ViewStyle } from "react-native";
 import { colors, radius, spacing, typography } from "../../theme";
 
 export interface InputProps extends Omit<TextInputProps, "style"> {
   label?: string;
   error?: string;
   containerStyle?: ViewStyle;
+  // `style` sigue omitido a propósito: el borde, el padding y el color del
+  // campo son del sistema y no se pisan desde afuera. `inputStyle` es la
+  // rendija para lo tipográfico (un código centrado y espaciado, por
+  // ejemplo), y se aplica ÚLTIMA para que sea evidente qué gana.
+  inputStyle?: StyleProp<TextStyle>;
 }
 
-export function Input({ label, error, editable = true, containerStyle, ...props }: InputProps) {
+export function Input({ label, error, editable = true, containerStyle, inputStyle, ...props }: InputProps) {
   const [focused, setFocused] = useState(false);
 
   const borderColor = error ? colors.error : focused ? colors.accent : colors.border;
@@ -39,6 +44,7 @@ export function Input({ label, error, editable = true, containerStyle, ...props 
             paddingHorizontal: thick ? spacing.md - 1 : spacing.md,
           },
           !editable && styles.disabled,
+          inputStyle,
         ]}
       />
       {error && <Text style={styles.error}>{error}</Text>}

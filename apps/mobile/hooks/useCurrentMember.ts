@@ -2,8 +2,13 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Member } from "@/types";
 
-// Resolves the `members` row for the logged-in auth user (members.user_id
-// == auth user id), same relationship apps/web relies on for user_profiles.
+// La fila de `members` del usuario logueado (members.user_id == auth uid).
+//
+// maybeSingle() y no single(): con single(), "este usuario todavía no se
+// vinculó a ningún gimnasio" y "la query falló" caían en el mismo error
+// genérico, y no había forma de distinguirlos desde afuera. Ahora `member`
+// en null con `error` en null significa exactamente "no vinculado" —que es
+// un estado normal, no una falla— y la app lo manda a /link-gym.
 export function useCurrentMember(userId: string | null | undefined) {
   const [member, setMember] = useState<Member | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,14 +31,14 @@ export function useCurrentMember(userId: string | null | undefined) {
           .from("members")
           .select("*")
           .eq("user_id", userId)
-          .single();
+          .maybeSingle();
 
         if (cancelled) return;
 
         if (fetchError) {
-          setError("No se encontró tu perfil de miembro.");
+          setError("No se pudo cargar tu perfil de miembro.");
         } else {
-          setMember(data as Member);
+          setMember((data as Member | null) ?? null);
         }
       } catch {
         // fetch rechaza (en vez de resolver con error) cuando no hay red.
