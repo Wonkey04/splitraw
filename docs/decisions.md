@@ -526,4 +526,149 @@ en el dispositivo.
 **Para que funcione hay que deployarla:** `supabase functions deploy
 delete-account`. Hasta entonces el botón existe y falla.
 
+
+## 2026-09 — Miembros del admin: mismo nivel que el trainer, sin filtro de sucursal
+
+**Contexto:** `/dashboard/members` mostraba Email / Nombre ("-", sin dato) /
+Acciones. Nunca se había hecho el JOIN a `user_profiles`, y no tenía
+paginado — la misma deuda que ya se había resuelto para el trainer seguía
+sin tocar del lado del owner.
+
+**Decisión:** RPC `list_org_members` (migración `0010`), clon de
+`list_branch_members` (`0009`) pero sin el filtro `branch_id` y con columna
+extra `branch_name`, porque el owner ve toda la organización y necesita
+saber de qué sucursal es cada socio. `TrainerMembersSection` se generalizó a
+`MembersSection.tsx` con prop `scope: "branch" | "org"` — un solo componente
+para tabla, paginado, buscador y modal de reasignación en los dos roles.
+
+**Por qué un solo componente y no dos parecidos:** ya habíamos decidido
+reusar `CreateRoutineForm` entre owner y trainer por el mismo motivo — dos
+copias del mismo listado son dos lugares donde el próximo bug se arregla
+una vez y se reproduce en el otro.
+
 ---
+
+## 2026-09 — Asignar rutina: crear y asignar en el mismo paso
+
+**Contexto:** la pantalla de asignar rutina (cards con preview, ya
+rediseñada para el trainer) solo dejaba elegir entre rutinas existentes. Si
+el owner/trainer quería una rutina puntual para ese alumno, tenía que salir,
+crearla en Rutinas, y volver a buscar al alumno.
+
+**Decisión:** tercera opción en la pantalla de asignar — "+ Crear rutina
+nueva para {nombre}" — navega a `/.../routines/create?assignToMemberId=<id>`.
+`CreateRoutineForm` detecta el query param y, si el INSERT de la rutina
+sale bien, hace el INSERT en `routines` (la asignación) en el mismo submit
+— es el mismo INSERT que ya usaba la pantalla de asignar, no uno nuevo.
+
+**Por qué no un flujo de creación paralelo:** mismo criterio que la
+decisión de septiembre sobre "duplicar rutina" — toda creación de rutina
+vive en `/create`, nunca se abre una segunda vía para lograr lo mismo.
+
+**Caso de falla:** si la rutina se crea pero la asignación falla, se
+muestra "Creada, pero sin asignar" con una salida explícita — no se
+redirige en silencio como si hubiera funcionado.
+
+**Deuda que quedó a la vista:** no existe una ruta de "ficha del alumno".
+Después de asignar, se vuelve al listado de miembros, no a una vista
+propia del socio. Queda pendiente si se justifica crear esa ruta.
+
+---
+
+## 2026-09 — Panel de Empleados (admin)
+
+**Contexto:** el nav ya tenía la pestaña "Entrenadores" reservada pero sin
+implementar. El owner solo veía invitaciones enviadas, ninguna vista
+consolidada de su equipo (nombre, rol, sucursal).
+
+**Decisión:** RPC `list_org_employees` (migración `0011`), **SECURITY
+DEFINER** — a diferencia de `list_org_members` / `list_branch_members`, que
+son INVOKER. El motivo: el email del empleado vive en `auth.users`, no en
+`user_profiles`, y `auth.users` no es accesible por RLS normal desde el
+cliente. La función hace el chequeo de rol (GYM_OWNER/ADMIN) explícito
+adentro, ya que no puede depender de la RLS de la tabla para eso.
+
+`/dashboard/employees` muestra el equipo activo arriba y las invitaciones
+pendientes abajo, en la misma pantalla — no se armó una pantalla aparte
+para las invitaciones, esa data ya existía y solo se reubicó. Nav:
+"Entrenadores" → "Empleados".
+
+**Alcance:** solo lectura. Sin edición de rol/sucursal desde esta pantalla
+todavía — no se expandió el scope del brief.
+
+---
+
+## 2026-09 — Perfil compartido (los 3 roles) + política de dato inmutable
+
+**Contexto:** ningún rol tenía pantalla propia para editar nombre o subir
+foto.
+
+**Decisión:** migración `0012` — columna `avatar_url` en `user_profiles`,
+bucket de Storage `avatars` (lectura pública, escritura solo por el propio
+usuario vía policy con `auth.uid()`), y un **trigger que bloquea que el
+propio usuario cambie su rol, organización o sucursal** desde el mismo
+UPDATE que usa para guardar su perfil — la superficie de escritura es la
+misma fila, así que la restricción tiene que vivir en la base, no confiar
+en que el form nunca mande esos campos.
+
+Rutas: `/dashboard/profile` (owner), `/trainer/profile`, `/profile` en
+mobile.
+
+**Caso particular MEMBER:** guarda por RPC (`save_member_profile`), no por
+UPDATE directo, porque un MEMBER puede no tener fila todavía en
+`user_profiles` — y una policy de INSERT no puede, por sí sola, garantizar
+que el rol que se inserta sea el correcto. La función lo fija server-side.
+
+**Nueva dependencia:** `expo-image-picker` en mobile.
+
+---
+
+## 2026-09 — Expiración de sesión: 12 h, medida desde `last_sign_in_at`
+
+**Contexto:** las sesiones no vencían nunca del lado de la app — volver a
+abrir después de días seguía logueado.
+
+**Decisión:** 12 horas, chequeado en el `useAuth` de ambas apps (web y
+mobile) contra `last_sign_in_at`, **no contra el `iat` del JWT.**
+
+**Por qué no el `iat`:** el JWT se renueva con cada refresh de token
+silencioso, así que su `iat` se corre solo y la sesión nunca llegaría a
+vencer aunque el usuario esté inactivo — hay que anclar el chequeo a
+cuándo inició sesión, no a cuándo se emitió el último token.
+
+**Pendiente, no resuelto en este brief:** confirmar en el dashboard de
+Supabase (Auth → Sessions) si está disponible el time-box nativo de
+sesiones para ese plan. Si está, activarlo igual — el chequeo del cliente
+no revoca el refresh token del lado del servidor, solo fuerza el logout
+visual.
+
+---
+
+## 2026-09 — Eliminar cuenta: Edge Function, reasignación de rutinas de trainer, owner explícitamente afuera
+
+**Contexto:** borrar de `auth.users` requiere `service_role`, que no puede
+viajar al cliente — mismo problema ya resuelto antes con la API key de
+Resend.
+
+**Decisión:** Edge Function `delete-account`. El id del usuario a borrar
+sale **del token de la request, nunca del body** — nadie puede pedir la
+baja de otra cuenta pasando un id distinto.
+
+**Trainer:** sus rutinas no se borran ni quedan con `created_by` /
+`assigned_by` apuntando a un usuario que ya no existe (rompería la FK). Se
+reasignan al owner de la organización al momento de la baja.
+
+**Owner:** caso cortado explícitamente — la función no contempla borrar la
+cuenta de un GYM_OWNER. Queda pendiente de decisión de producto qué pasa
+con una organización completa cuando su único owner quiere borrarse.
+
+**Confirmación:** el usuario tiene que escribir "ELIMINAR" en la pantalla
+de perfil, no un simple "¿estás seguro?".
+
+**Pendiente manual (no lo puede hacer Claude Code):**
+- `supabase functions deploy delete-account`
+- Aplicar `0010`, `0011`, `0012` en el SQL editor, en ese orden
+  (`0011` asume que `user_profiles` tiene `created_at`)
+---
+
+
