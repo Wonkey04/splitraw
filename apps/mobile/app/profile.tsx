@@ -64,6 +64,12 @@ export default function Profile() {
     }
   }, [authLoading, user]);
 
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    await clearGymSession();
+    router.replace("/login");
+  }
+
   useEffect(() => {
     if (!user) return;
 
@@ -290,6 +296,13 @@ export default function Profile() {
 
             <Button fullWidth onPress={handleSave} loading={saving} disabled={saving}>
               Guardar cambios
+            </Button>
+
+            {/* El logout se movio aca desde el header del home: ese boton
+                pasa a ser "Mi perfil" (icono de persona), asi que esta
+                pantalla es donde vive cerrar sesion ahora. */}
+            <Button variant="secondary" fullWidth onPress={handleLogout}>
+              Cerrar sesión
             </Button>
 
             {/* Abajo de todo y separado: es la accion irreversible de la

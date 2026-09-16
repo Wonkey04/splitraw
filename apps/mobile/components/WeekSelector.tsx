@@ -51,6 +51,10 @@ export function WeekSelector({ currentDay, daysWithRoutine, onSelectDay }: WeekS
                 {day.label.charAt(0)}
               </Text>
             </View>
+
+            {/* El día activo ya se distingue por el círculo lleno: repetir el
+                punto ahí sería ruido, no información nueva. */}
+            <View style={styles.dotSlot}>{!active && hasRoutine && <View style={styles.dot} />}</View>
           </Pressable>
         );
       })}
@@ -95,5 +99,17 @@ const styles = StyleSheet.create({
   },
   labelDisabled: {
     color: withAlpha(colors.textSecondary, 0.55),
+  },
+  dotSlot: {
+    height: 8,
+    marginTop: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.accent,
   },
 });

@@ -6,13 +6,19 @@ export const colors = {
   bgPrimary: "#FFFFFF",
   bgSecondary: "#F8F9FA",
   bgTertiary: "#F0F1F3",
+  // Estado vacío ("Sin rutina para hoy") y la sección atenuada "Próximamente".
+  // No son el mismo gris que bgTertiary: son fondos propios del lado socio.
+  bgMuted: "#F5F6FA",
+  bgSubtle: "#FAFBFC",
 
   textPrimary: "#1A202C",
   textSecondary: "#6B7280",
   border: "#E5E7EB",
 
-  accent: "#1E3A8A",
-  accentHover: "#2563EB",
+  // Azul-índigo más suave que el del admin (#1E3A8A): el lado socio tiene su
+  // propio acento, a confirmar contra la marca real.
+  accent: "#4F5FAD",
+  accentHover: "#414E8F",
 
   success: "#10B981",
   error: "#DC2626",

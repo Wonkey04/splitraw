@@ -1,7 +1,7 @@
 import { StyleSheet, View } from "react-native";
 import { colors } from "@/theme";
 
-export type IconName = "list" | "pin" | "logout" | "check";
+export type IconName = "list" | "pin" | "logout" | "check" | "person" | "calendarOff";
 
 interface IconProps {
   name: IconName;
@@ -63,6 +63,68 @@ export function Icon({ name, size = 16, color = colors.textSecondary }: IconProp
             borderColor: color,
             transform: [{ rotate: "-45deg" }],
             marginTop: -size * 0.1,
+          }}
+        />
+      </View>
+    );
+  }
+
+  if (name === "person") {
+    return (
+      <View style={{ width: size, height: size, alignItems: "center", justifyContent: "flex-end" }}>
+        <View
+          style={{
+            width: size * 0.36,
+            height: size * 0.36,
+            borderRadius: size * 0.18,
+            borderWidth: 1.5,
+            borderColor: color,
+            marginBottom: size * 0.08,
+          }}
+        />
+        <View
+          style={{
+            width: size * 0.68,
+            height: size * 0.34,
+            borderTopLeftRadius: size * 0.34,
+            borderTopRightRadius: size * 0.34,
+            borderWidth: 1.5,
+            borderBottomWidth: 0,
+            borderColor: color,
+          }}
+        />
+      </View>
+    );
+  }
+
+  if (name === "calendarOff") {
+    return (
+      <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+        <View
+          style={{
+            width: size * 0.8,
+            height: size * 0.7,
+            borderRadius: size * 0.1,
+            borderWidth: 1.5,
+            borderColor: color,
+          }}
+        />
+        <View
+          style={{
+            position: "absolute",
+            top: size * 0.06,
+            width: size * 0.8,
+            height: 1.5,
+            backgroundColor: color,
+          }}
+        />
+        <View
+          style={{
+            position: "absolute",
+            width: size * 0.9,
+            height: 1.5,
+            backgroundColor: color,
+            transform: [{ rotate: "-40deg" }],
           }}
         />
       </View>

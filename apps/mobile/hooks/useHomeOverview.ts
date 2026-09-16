@@ -7,7 +7,9 @@ interface HomeOverview {
   daysWithRoutine: number[];
   /** Rutinas asignadas a este member dentro de la semana en curso. */
   weeklyRoutineCount: number;
-  /** Sucursal del member: "Río Tercero, Córdoba" si hay dirección. */
+  /** Nombre del gimnasio (organizations.name). */
+  gymName: string | null;
+  /** Sucursal del member: "Sucursal Mitre 201" si hay dirección, si no el nombre solo. */
   branchLabel: string | null;
   /** nombre de ejercicio -> grupo muscular, para calcular el foco del día. */
   muscleGroupByExercise: Map<string, string>;
@@ -42,6 +44,7 @@ function currentWeekRange(): { start: Date; end: Date } {
 export function useHomeOverview(member: Member | null): HomeOverview {
   const [daysWithRoutine, setDaysWithRoutine] = useState<number[]>([]);
   const [weeklyRoutineCount, setWeeklyRoutineCount] = useState(0);
+  const [gymName, setGymName] = useState<string | null>(null);
   const [branchLabel, setBranchLabel] = useState<string | null>(null);
   const [muscleGroupByExercise, setMuscleGroupByExercise] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -61,7 +64,7 @@ export function useHomeOverview(member: Member | null): HomeOverview {
       try {
         const { start, end } = currentWeekRange();
 
-        const [routineRowsRes, weeklyRes, branchRes] = await Promise.all([
+        const [routineRowsRes, weeklyRes, branchRes, orgRes] = await Promise.all([
           supabase
             .from("routines")
             .select("routine_template_id")
@@ -75,14 +78,21 @@ export function useHomeOverview(member: Member | null): HomeOverview {
             .gte("created_at", start.toISOString())
             .lt("created_at", end.toISOString()),
           supabase.from("branches").select("name, address").eq("id", member!.branch_id).maybeSingle(),
+          supabase.from("organizations").select("name").eq("id", member!.organization_id).maybeSingle(),
         ]);
 
         if (cancelled) return;
 
         setWeeklyRoutineCount(weeklyRes.count ?? 0);
 
-        const branch = branchRes.data as { name: string; address?: string | null } | null;
-        setBranchLabel(branch ? [branch.name, branch.address].filter(Boolean).join(", ") : null);
+        // "Sucursal {nombre}": el nombre de la sucursal ya es corto (ej.
+        // "Mitre 201"), el prefijo es lo que la distingue del nombre del
+        // gimnasio en la card de "Tu gimnasio".
+        const branch = branchRes.data as { name: string } | null;
+        setBranchLabel(branch ? `Sucursal ${branch.name}` : null);
+
+        const org = orgRes.data as { name: string } | null;
+        setGymName(org?.name ?? null);
 
         const templateId = routineRowsRes.data?.[0]?.routine_template_id as string | undefined;
         if (!templateId) {
@@ -145,6 +155,8 @@ export function useHomeOverview(member: Member | null): HomeOverview {
         if (!cancelled) {
           setDaysWithRoutine([]);
           setMuscleGroupByExercise(new Map());
+          setGymName(null);
+          setBranchLabel(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -158,5 +170,5 @@ export function useHomeOverview(member: Member | null): HomeOverview {
     };
   }, [member]);
 
-  return { daysWithRoutine, weeklyRoutineCount, branchLabel, muscleGroupByExercise, loading };
+  return { daysWithRoutine, weeklyRoutineCount, gymName, branchLabel, muscleGroupByExercise, loading };
 }

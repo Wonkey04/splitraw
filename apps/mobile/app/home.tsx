@@ -1,24 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Badge, Banner, Card, Icon } from "@/components/ui";
 import { WeekSelector } from "@/components/WeekSelector";
+import { RoutineTodayCard } from "@/components/RoutineTodayCard";
+import { NoRoutineCard } from "@/components/NoRoutineCard";
 import { dayLabel, getTodayDayOfWeek } from "@/constants/days";
-import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
 import { useHomeOverview } from "@/hooks/useHomeOverview";
 import { useRoutineOfDay } from "@/hooks/useRoutineOfDay";
-import { colors, radius, spacing, typography, withAlpha } from "@/theme";
-import { clearGymSession } from "@/utils/storage";
+import { colors, spacing, typography, withAlpha } from "@/theme";
 import { estimateDurationMinutes } from "@/utils/routineEstimate";
 
 const todayDayOfWeek = getTodayDayOfWeek();
 
 // Pantallas del roadmap: se listan sin onPress hasta que existan (Fase 3/4).
 // Al implementarlas se saca el badge y la opacidad, y se agrega la
-// navegación real. "Mi perfil" ya salió de acá: es /profile.
+// navegación real.
 const UPCOMING_ITEMS = ["Mis rutinas de la semana"];
 
 // "Hola, Juan". El nombre sale del metadata del usuario de auth, que es
@@ -73,7 +73,7 @@ export default function Home() {
     member?.id,
     currentDay
   );
-  const { daysWithRoutine, weeklyRoutineCount, branchLabel, muscleGroupByExercise } =
+  const { daysWithRoutine, weeklyRoutineCount, gymName, branchLabel, muscleGroupByExercise } =
     useHomeOverview(member);
 
   useEffect(() => {
@@ -81,12 +81,6 @@ export default function Home() {
       router.replace("/login");
     }
   }, [authLoading, user]);
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    await clearGymSession();
-    router.replace("/login");
-  }
 
   // Grupo con más ejercicios en el día seleccionado. Los ejercicios cargados
   // a mano (fuera del catálogo) no tienen grupo, así que puede no haber dato.
@@ -112,9 +106,27 @@ export default function Home() {
   const isToday = currentDay === todayDayOfWeek;
   const loading = authLoading || memberLoading;
   const error = memberError ?? routineError;
+  const hasRoutineToday = !routineLoading && exercises.length > 0;
 
   const profileName = (user?.user_metadata as { name?: string } | undefined)?.name ?? null;
   const expired = isExpired(member?.activation_expires_at);
+
+  const heroLabel = isToday ? "Rutina de hoy" : "Rutina del " + dayLabel(currentDay).toLowerCase();
+  const emptyTitle = isToday
+    ? "Sin rutina para hoy"
+    : "Sin rutina para el " + dayLabel(currentDay).toLowerCase();
+
+  // TODO(backend): todavía no hay forma de contactar al entrenador desde acá
+  // (ni su teléfono es visible para el socio por RLS, ni existe una tabla de
+  // notificaciones internas). Cuando eso exista, acá va el link de WhatsApp
+  // o el insert que dispare la notificación — por ahora se lo decimos claro
+  // en vez de simular un envío que no pasa.
+  function handleNotifyTrainer() {
+    Alert.alert(
+      "Próximamente",
+      "Todavía no podés avisarle a tu entrenador desde la app. Hablalo directamente con él."
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -133,12 +145,12 @@ export default function Home() {
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Cerrar sesión"
-            onPress={handleLogout}
+            accessibilityLabel="Mi perfil"
+            onPress={() => router.push("/profile")}
             hitSlop={12}
-            style={styles.logoutButton}
+            style={styles.profileButton}
           >
-            <Icon name="logout" size={20} color={colors.textSecondary} />
+            <Icon name="person" size={18} color={colors.textSecondary} />
           </Pressable>
         </View>
 
@@ -172,44 +184,24 @@ export default function Home() {
               onSelectDay={setCurrentDay}
             />
 
-            <View style={styles.hero}>
-              <View style={styles.heroHeader}>
-                <View style={styles.heroHeaderText}>
-                  <Text style={styles.heroLabel}>
-                    {isToday ? "Rutina de hoy" : "Rutina del " + dayLabel(currentDay).toLowerCase()}
-                  </Text>
-                  <Text style={styles.heroTitle} numberOfLines={2}>
-                    {routineName ?? "Sin rutina asignada"}
-                  </Text>
-                </View>
-                <Icon name="list" size={20} color={colors.accent} />
+            {/* Dos componentes distintos, no un mismo hero con datos en
+                cero: "sin rutina" no es una rutina de 0 ejercicios, es otra
+                situación (avisarle al entrenador, no "ver rutina"). */}
+            {routineLoading ? (
+              <View style={styles.center}>
+                <ActivityIndicator color={colors.accent} />
               </View>
-
-              <View style={styles.heroMetrics}>
-                <View style={styles.heroMetric}>
-                  <Text style={styles.heroMetricValue}>{exercises.length}</Text>
-                  <Text style={styles.heroMetricLabel}>
-                    {exercises.length === 1 ? "Ejercicio" : "Ejercicios"}
-                  </Text>
-                </View>
-                <View style={styles.heroMetric}>
-                  <Text style={styles.heroMetricValue}>
-                    {durationMinutes > 0 ? durationMinutes + " min" : "-"}
-                  </Text>
-                  <Text style={styles.heroMetricLabel}>Duración estimada</Text>
-                </View>
-              </View>
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ disabled: exercises.length === 0 }}
-                disabled={exercises.length === 0 || routineLoading}
+            ) : hasRoutineToday ? (
+              <RoutineTodayCard
+                label={heroLabel}
+                routineName={routineName ?? ""}
+                exerciseCount={exercises.length}
+                durationMinutes={durationMinutes}
                 onPress={() => router.push({ pathname: "/routine/[day]", params: { day: currentDay } })}
-                style={[styles.heroButton, exercises.length === 0 && styles.heroButtonDisabled]}
-              >
-                <Text style={styles.heroButtonText}>Ver rutina completa</Text>
-              </Pressable>
-            </View>
+              />
+            ) : (
+              <NoRoutineCard title={emptyTitle} onNotifyTrainer={handleNotifyTrainer} />
+            )}
 
             <View style={styles.statsRow}>
               <Card style={styles.statCard}>
@@ -220,9 +212,15 @@ export default function Home() {
               </Card>
 
               <Card style={styles.statCard}>
-                <Text style={styles.statValue} numberOfLines={1}>
-                  {muscleFocus ?? "-"}
-                </Text>
+                {muscleFocus ? (
+                  <Text style={styles.statValue} numberOfLines={1}>
+                    {muscleFocus}
+                  </Text>
+                ) : (
+                  <Text style={styles.statValueEmpty} numberOfLines={1}>
+                    {isToday ? "Sin rutina hoy" : "Sin rutina"}
+                  </Text>
+                )}
                 <Text style={styles.statLabel}>Grupo foco de hoy</Text>
               </Card>
             </View>
@@ -230,21 +228,20 @@ export default function Home() {
             <Text style={styles.sectionLabel}>Tu gimnasio</Text>
             <Card style={styles.gymCard}>
               <Icon name="pin" size={20} color={colors.textSecondary} />
-              <Text style={styles.gymName} numberOfLines={2}>
-                {branchLabel ?? "Sucursal no disponible"}
-              </Text>
+              <View style={styles.gymText}>
+                <Text style={styles.gymName} numberOfLines={1}>
+                  {gymName ?? "Gimnasio no disponible"}
+                </Text>
+                {branchLabel && (
+                  <Text style={styles.branchName} numberOfLines={1}>
+                    {branchLabel}
+                  </Text>
+                )}
+              </View>
             </Card>
 
             <Text style={styles.sectionLabel}>Próximamente</Text>
             <View style={styles.upcomingGroup}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.push("/profile")}
-                style={styles.upcomingRow}
-              >
-                <Text style={styles.linkText}>Mi perfil</Text>
-              </Pressable>
-
               {UPCOMING_ITEMS.map((item, index) => (
                 <View
                   key={item}
@@ -266,6 +263,7 @@ export default function Home() {
 }
 
 const AVATAR_SIZE = 38;
+const PROFILE_BUTTON_SIZE = 36;
 
 const styles = StyleSheet.create({
   container: {
@@ -309,8 +307,14 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: colors.textPrimary,
   },
-  logoutButton: {
-    padding: spacing.xs,
+  profileButton: {
+    width: PROFILE_BUTTON_SIZE,
+    height: PROFILE_BUTTON_SIZE,
+    borderRadius: PROFILE_BUTTON_SIZE / 2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
   },
   center: {
     paddingVertical: spacing.xl,
@@ -322,66 +326,6 @@ const styles = StyleSheet.create({
   errorText: {
     ...typography.body,
     color: colors.error,
-  },
-
-  // Único bloque del panel con fondo distinto al resto.
-  hero: {
-    backgroundColor: withAlpha(colors.accent, 0.1),
-    borderWidth: 1,
-    borderColor: withAlpha(colors.accent, 0.3),
-    borderRadius: radius,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-  },
-  heroHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-  },
-  heroHeaderText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  heroLabel: {
-    ...typography.label,
-    color: colors.accent,
-  },
-  heroTitle: {
-    ...typography.h3,
-    color: colors.textPrimary,
-    marginTop: spacing.xs,
-  },
-  heroMetrics: {
-    flexDirection: "row",
-    gap: spacing.lg,
-    marginTop: spacing.md,
-  },
-  heroMetric: {
-    flexShrink: 1,
-  },
-  heroMetricValue: {
-    ...typography.h3,
-    color: colors.textPrimary,
-  },
-  heroMetricLabel: {
-    ...typography.small,
-    color: colors.textSecondary,
-  },
-  heroButton: {
-    marginTop: spacing.md,
-    backgroundColor: colors.accent,
-    borderRadius: radius,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    alignItems: "center",
-  },
-  heroButtonDisabled: {
-    opacity: 0.5,
-  },
-  heroButtonText: {
-    ...typography.body,
-    fontWeight: "500",
-    color: colors.bgPrimary,
   },
 
   statsRow: {
@@ -397,6 +341,11 @@ const styles = StyleSheet.create({
   statValue: {
     ...typography.h3,
     color: colors.textPrimary,
+  },
+  statValueEmpty: {
+    ...typography.body,
+    fontStyle: "italic",
+    color: colors.textSecondary,
   },
   statLabel: {
     ...typography.small,
@@ -416,20 +365,32 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.lg,
   },
-  gymName: {
-    ...typography.body,
-    color: colors.textPrimary,
+  gymText: {
     flex: 1,
     minWidth: 0,
   },
+  gymName: {
+    ...typography.body,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  branchName: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
 
+  // Sección atenuada a propósito: solo para lo que todavía no existe. Una
+  // función real (ej. "Mi perfil") nunca se mezcla acá.
   upcomingGroup: {
     borderWidth: 1,
+    borderStyle: "dashed",
     borderColor: colors.border,
-    borderRadius: radius,
+    borderRadius: 6,
+    backgroundColor: colors.bgSubtle,
   },
   upcomingRow: {
-    opacity: 0.55,
+    opacity: 0.65,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -444,16 +405,7 @@ const styles = StyleSheet.create({
   },
   upcomingText: {
     ...typography.body,
-    color: colors.textPrimary,
-    flex: 1,
-    minWidth: 0,
-  },
-  // Las filas que ya son navegables se distinguen por color, no por icono:
-  // el resto de la lista sigue siendo texto muerto con badge "Pronto".
-  linkText: {
-    ...typography.body,
-    color: colors.accent,
-    fontWeight: "500",
+    color: colors.textSecondary,
     flex: 1,
     minWidth: 0,
   },
