@@ -62,12 +62,17 @@ export default function DeleteAccountCard() {
         return;
       }
 
-      // La cuenta ya no existe: la sesion que quedo en el navegador tiene que
-      // irse igual, antes de volver a la landing. El mensaje de despedida se
-      // ve un momento antes de mandarlo, si no el redirect lo tapa.
-      await supabase.auth.signOut();
+      // La cuenta ya no existe en el servidor, pero la sesión del navegador
+      // sigue viva unos segundos a propósito: el guard de /dashboard y
+      // /trainer reacciona apenas signOut() vacía la sesión y redirige de
+      // inmediato, así que si se cerraba sesión primero el mensaje de
+      // despedida nunca llegaba a pintarse (el layout ya había navegado).
+      // Por eso el orden es mostrar -> esperar -> recién ahí signOut + volver.
       setFarewell(true);
-      setTimeout(() => router.replace("/"), 2200);
+      setTimeout(async () => {
+        await supabase.auth.signOut();
+        router.replace("/");
+      }, 2200);
     } catch (err) {
       const friendly = "No se pudo eliminar la cuenta. Revisá tu conexión.";
       setError(friendly);
