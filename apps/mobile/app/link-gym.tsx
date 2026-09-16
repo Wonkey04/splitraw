@@ -42,8 +42,8 @@ export default function LinkGym() {
 
     setLoading(true);
     try {
-      const name = (user?.user_metadata as { name?: string } | undefined)?.name ?? null;
-      const result = await linkMemberByCode(code, name);
+      const metadata = user?.user_metadata as { name?: string; surname?: string } | undefined;
+      const result = await linkMemberByCode(code, metadata?.name ?? null, metadata?.surname ?? null);
 
       if (result.status === "invalid") {
         // Error en pantalla, sin salir de acá: el socio corrige el código y

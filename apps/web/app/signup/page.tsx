@@ -26,6 +26,7 @@ export default function SignupPage() {
   const router = useRouter();
   const { session, loading } = useAuth();
   const [name, setName] = useState("");
+  const [surname, setSurname] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +61,7 @@ export default function SignupPage() {
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      options: { data: { name: name.trim() } },
+      options: { data: { name: name.trim(), surname: surname.trim() } },
     });
 
     if (signUpError) {
@@ -102,14 +103,24 @@ export default function SignupPage() {
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <Input
-            label="Tu nombre"
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Juan Pérez"
-            autoComplete="name"
-          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Nombre"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Juan"
+              autoComplete="given-name"
+            />
+            <Input
+              label="Apellido"
+              type="text"
+              value={surname}
+              onChange={(e) => setSurname(e.target.value)}
+              placeholder="Pérez"
+              autoComplete="family-name"
+            />
+          </div>
           <Input
             label="Email"
             type="email"

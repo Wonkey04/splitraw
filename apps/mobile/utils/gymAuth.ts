@@ -77,10 +77,15 @@ export interface LinkResult {
 // `user_profiles` con el rol forzado a MEMBER) vive en la RPC, en una sola
 // transacción. Antes eran dos inserts sueltos desde el cliente: si el segundo
 // fallaba quedaba un perfil sin socio, y el rol viajaba como parámetro.
-export async function linkMemberByCode(code: string, name?: string | null): Promise<LinkResult> {
+export async function linkMemberByCode(
+  code: string,
+  name?: string | null,
+  surname?: string | null
+): Promise<LinkResult> {
   const { data, error } = await supabase.rpc("link_member_by_code", {
     p_code: code.trim().toUpperCase(),
     p_name: name?.trim() || null,
+    p_surname: surname?.trim() || null,
   });
 
   if (error) {

@@ -9,6 +9,7 @@ interface LoginParams {
 
 interface SignupParams extends LoginParams {
   name: string;
+  surname: string;
 }
 
 // Login y registro del socio. Devuelve true/false en vez de tirar: login.tsx
@@ -59,7 +60,7 @@ export function useSupabaseAuth() {
     }
   }
 
-  async function signup({ email, password, name }: SignupParams): Promise<boolean> {
+  async function signup({ email, password, name, surname }: SignupParams): Promise<boolean> {
     setError(null);
     setLoading(true);
     try {
@@ -74,11 +75,12 @@ export function useSupabaseAuth() {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: trimmedEmail,
         password,
-        // El nombre viaja en el metadata del usuario de auth porque todavía
-        // no hay dónde guardarlo: user_profiles.organization_id es NOT NULL,
-        // así que esa fila no puede existir hasta que el socio se vincule.
-        // La pantalla de vinculación lo lee de acá y se lo pasa a la RPC.
-        options: { data: { name: name.trim() } },
+        // El nombre y apellido viajan en el metadata del usuario de auth
+        // porque todavía no hay dónde guardarlos: user_profiles.organization_id
+        // es NOT NULL, así que esa fila no puede existir hasta que el socio
+        // se vincule. La pantalla de vinculación lo lee de acá y se lo pasa
+        // a la RPC.
+        options: { data: { name: name.trim(), surname: surname.trim() } },
       });
 
       if (signUpError || !data.user) {

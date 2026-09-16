@@ -84,6 +84,7 @@ export default function EmployeesPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
+  const [surname, setSurname] = useState("");
   const [email, setEmail] = useState("");
   const [branchId, setBranchId] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -192,7 +193,12 @@ export default function EmployeesPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), branchId }),
+        body: JSON.stringify({
+          name: name.trim(),
+          surname: surname.trim(),
+          email: email.trim(),
+          branchId,
+        }),
       });
 
       const body = await response.json().catch(() => ({}));
@@ -204,6 +210,7 @@ export default function EmployeesPage() {
 
       setSuccess(`Invitación enviada a ${email.trim()}. El link vence en 30 minutos.`);
       setName("");
+      setSurname("");
       setEmail("");
       await refreshInvitations();
     } catch {
@@ -300,12 +307,18 @@ export default function EmployeesPage() {
           <h3 className="mb-4 text-body font-medium text-textPrimary">Invitar entrenador</h3>
 
           <form onSubmit={handleInvite} className="flex flex-col gap-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Input
                 label="Nombre"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Juan Pérez"
+                placeholder="Juan"
+              />
+              <Input
+                label="Apellido"
+                value={surname}
+                onChange={(e) => setSurname(e.target.value)}
+                placeholder="Pérez"
               />
               <Input
                 label="Email"
@@ -357,7 +370,9 @@ export default function EmployeesPage() {
                 const status = statusOf(invitation);
                 return (
                   <TableRow key={invitation.id}>
-                    <TableCell className="py-1">{invitation.name}</TableCell>
+                    <TableCell className="py-1">
+                      {[invitation.name, invitation.surname].filter(Boolean).join(" ")}
+                    </TableCell>
                     <TableCell className="py-1 text-textSecondary">{invitation.email}</TableCell>
                     <TableCell className="py-1 text-textSecondary">
                       {branches.find((b) => b.id === invitation.branch_id)?.name ?? "-"}

@@ -17,6 +17,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [surname, setSurname] = useState("");
   const [fieldError, setFieldError] = useState<string | null>(null);
 
   const { loading, error, setError, login, signup } = useSupabaseAuth();
@@ -55,7 +56,7 @@ export default function Login() {
         return;
       }
 
-      const ok = await signup({ email, password, name: name.trim() });
+      const ok = await signup({ email, password, name: name.trim(), surname: surname.trim() });
       // Recién registrado: no puede tener vínculo todavía, así que va directo
       // a vincularse. No se le pregunta el código antes de tener cuenta.
       if (ok) router.replace("/link-gym");
@@ -102,16 +103,28 @@ export default function Login() {
         />
 
         {isSignup && (
-          <Input
-            label="Nombre"
-            containerStyle={styles.field}
-            value={name}
-            onChangeText={(value) => {
-              setName(value);
-              clearErrors();
-            }}
-            placeholder="Juan"
-          />
+          <>
+            <Input
+              label="Nombre"
+              containerStyle={styles.field}
+              value={name}
+              onChangeText={(value) => {
+                setName(value);
+                clearErrors();
+              }}
+              placeholder="Juan"
+            />
+            <Input
+              label="Apellido"
+              containerStyle={styles.field}
+              value={surname}
+              onChangeText={(value) => {
+                setSurname(value);
+                clearErrors();
+              }}
+              placeholder="Pérez"
+            />
+          </>
         )}
 
         {displayError && <Text style={styles.error}>{displayError}</Text>}

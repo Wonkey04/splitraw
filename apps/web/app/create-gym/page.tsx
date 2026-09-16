@@ -82,7 +82,9 @@ export default function CreateGymPage() {
   const [provincias, setProvincias] = useState<Provincia[]>([]);
   const [ciudades, setCiudades] = useState<Ciudad[]>([]);
 
-  const ownerName = (user?.user_metadata as { name?: string } | undefined)?.name?.trim() ?? "";
+  const ownerMetadata = user?.user_metadata as { name?: string; surname?: string } | undefined;
+  const ownerName = ownerMetadata?.name?.trim() ?? "";
+  const ownerSurname = ownerMetadata?.surname?.trim() ?? "";
 
   useEffect(() => {
     supabase
@@ -171,6 +173,7 @@ export default function CreateGymPage() {
         p_owner_name: ownerName,
         p_ciudad_id: ciudadId,
         p_branch_address: branchAddress.trim() || null,
+        p_owner_surname: ownerSurname || null,
       });
 
       if (rpcError) {
@@ -193,7 +196,7 @@ export default function CreateGymPage() {
       // datos de ejemplo: un gimnasio nuevo no tiene alumnos.
       router.push("/dashboard");
     },
-    [gymName, branchName, branchAddress, ciudadId, ownerName, router]
+    [gymName, branchName, branchAddress, ciudadId, ownerName, ownerSurname, router]
   );
 
   if (loading || checking) {

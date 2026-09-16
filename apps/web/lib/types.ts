@@ -103,6 +103,7 @@ export interface TrainerInvitation {
   id: string;
   email: string;
   name: string;
+  surname?: string | null;
   organization_id: string;
   branch_id: string;
   invited_by: string;

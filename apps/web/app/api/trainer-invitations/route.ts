@@ -12,6 +12,7 @@ const INVITE_TTL_MINUTES = 30;
 
 interface InvitePayload {
   name?: unknown;
+  surname?: unknown;
   email?: unknown;
   branchId?: unknown;
 }
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
   }
 
   const name = typeof payload.name === "string" ? payload.name.trim() : "";
+  const surname = typeof payload.surname === "string" ? payload.surname.trim() : "";
   const email = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
   const branchId = typeof payload.branchId === "string" ? payload.branchId : "";
 
@@ -111,12 +113,13 @@ export async function POST(request: Request) {
     .insert({
       email,
       name,
+      surname: surname || null,
       organization_id: profile.organization_id,
       branch_id: branch.id,
       invited_by: caller.id,
       expires_at: expiresAt,
     })
-    .select("id, token, email, name, expires_at")
+    .select("id, token, email, name, surname, expires_at")
     .single();
 
   if (insertError || !invitation) {
@@ -141,7 +144,7 @@ export async function POST(request: Request) {
     apiKey: resendApiKey,
     to: email,
     gymName,
-    trainerName: name,
+    trainerName: [name, surname].filter(Boolean).join(" "),
     branchName: branch.name,
     link,
   });

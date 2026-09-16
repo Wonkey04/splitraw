@@ -108,7 +108,13 @@ export default function Home() {
   const error = memberError ?? routineError;
   const hasRoutineToday = !routineLoading && exercises.length > 0;
 
-  const profileName = (user?.user_metadata as { name?: string } | undefined)?.name ?? null;
+  // name y surname viajan separados en el metadata (signup los pide en dos
+  // campos). Para el saludo alcanza el nombre; los initials del avatar
+  // necesitan los dos, si no un socio con apellido cargado se queda con una
+  // sola letra en el círculo.
+  const profileMetadata = user?.user_metadata as { name?: string; surname?: string } | undefined;
+  const profileName = profileMetadata?.name ?? null;
+  const profileFullName = [profileMetadata?.name, profileMetadata?.surname].filter(Boolean).join(" ") || null;
   const expired = isExpired(member?.activation_expires_at);
 
   const heroLabel = isToday ? "Rutina de hoy" : "Rutina del " + dayLabel(currentDay).toLowerCase();
@@ -133,7 +139,7 @@ export default function Home() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials(profileName, member?.email)}</Text>
+            <Text style={styles.avatarText}>{initials(profileFullName, member?.email)}</Text>
           </View>
 
           <View style={styles.headerText}>
