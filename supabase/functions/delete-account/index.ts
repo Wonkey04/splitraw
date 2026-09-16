@@ -134,6 +134,24 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // exercise_logs.logged_by también apunta a este usuario (el trainer
+    // puede cargar el peso por el socio, ver migración 0013) y no tiene
+    // ON DELETE CASCADE: si se deja como está, borrar auth.users más abajo
+    // falla por FK en cuanto exista una sola fila logueada por este
+    // entrenador. Mismo criterio que routines/routine_templates: se
+    // reasigna al dueño, no se borra el registro del socio.
+    const { error: logsError } = await admin
+      .from("exercise_logs")
+      .update({ logged_by: owner.id })
+      .eq("logged_by", userId);
+
+    if (logsError) {
+      return json(
+        { error: "No se pudieron transferir tus cargas registradas: " + logsError.message },
+        500
+      );
+    }
+
     // La invitación con la que entró guarda su email: es dato personal y se
     // va con la cuenta.
     if (user.email) {
@@ -148,14 +166,51 @@ Deno.serve(async (req: Request) => {
 
     const memberIds = ((members as { id: string }[] | null) ?? []).map((m) => m.id);
 
+    // exercise_log (singular) es la excepción: su member_id NO apunta a
+    // members.id, apunta a user_profiles.id (== este mismo userId) — las
+    // dos tablas de log usan la misma columna para dos cosas distintas,
+    // ver docs/decisions.md. Antes esto filtraba por memberIds (members.id)
+    // y no borraba NADA; lo que realmente limpiaba el historial era el
+    // ON DELETE CASCADE de exercise_log hacia user_profiles, que corre más
+    // abajo cuando se borra el profile. Se corrige para que el borrado sea
+    // explícito y no dependa en silencio de un efecto secundario de otra
+    // tabla.
+    const { error: logError } = await admin.from("exercise_log").delete().eq("member_id", userId);
+
+    if (logError) {
+      return json({ error: "No se pudo borrar tu historial: " + logError.message }, 500);
+    }
+
     if (memberIds.length > 0) {
-      const { error: logError } = await admin
-        .from("exercise_log")
+      // exercise_logs (plural) y body_metrics sí usan members.id. Ninguna
+      // de las dos tiene ON DELETE CASCADE hacia members, así que si el
+      // socio tiene una sola fila ahí el DELETE de members de abajo falla
+      // por FK. Hoy las dos tablas están vacías en producción, pero
+      // exercise_logs ya tiene UI real que le escribe (drill-down del
+      // trainer), así que dejar de borrarlas acá era un fallo esperando
+      // pasar, no algo hipotético.
+      const { error: exerciseLogsError } = await admin
+        .from("exercise_logs")
         .delete()
         .in("member_id", memberIds);
 
-      if (logError) {
-        return json({ error: "No se pudo borrar tu historial: " + logError.message }, 500);
+      if (exerciseLogsError) {
+        return json(
+          { error: "No se pudo borrar tu historial de cargas: " + exerciseLogsError.message },
+          500
+        );
+      }
+
+      const { error: bodyMetricsError } = await admin
+        .from("body_metrics")
+        .delete()
+        .in("member_id", memberIds);
+
+      if (bodyMetricsError) {
+        return json(
+          { error: "No se pudieron borrar tus métricas: " + bodyMetricsError.message },
+          500
+        );
       }
 
       const { error: routinesError } = await admin
