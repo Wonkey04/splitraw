@@ -35,7 +35,27 @@ interface MemberRow {
   current_routine_id: string | null;
   current_routine_name: string | null;
   assigned_at: string | null;
+  /** Fecha (date, sin hora) del último exercise_log del socio. Null = nunca registró. */
+  last_log_at: string | null;
   total_count: number;
+}
+
+const ADHERENCE_WARN_DAYS = 7;
+
+// "Última carga: hace N días" bajo el nombre (Feature 3). No reemplaza el
+// badge Con/Sin rutina: una cosa es si el trainer le asignó algo, otra si
+// el socio efectivamente está yendo. Acá no hay "vencido" — es una señal a
+// seguir, no un error, por eso el color es warning y no error incluso
+// cuando nunca registró nada.
+function adherenceLabel(lastLogAt: string | null): { text: string; stale: boolean } {
+  if (!lastLogAt) return { text: "Sin registros", stale: true };
+
+  const days = Math.floor((Date.now() - new Date(lastLogAt).getTime()) / (24 * 60 * 60 * 1000));
+  const stale = days >= ADHERENCE_WARN_DAYS;
+
+  if (days <= 0) return { text: "Última carga: hoy", stale };
+  if (days === 1) return { text: "Última carga: hace 1 día", stale };
+  return { text: `Última carga: hace ${days} días`, stale };
 }
 
 // Estado del socio: se CALCULA desde members.activation_expires_at, no es un
@@ -334,14 +354,20 @@ export default function MembersSection({
                 const hasRoutine = Boolean(row.current_routine_id);
                 const name = row.display_name ?? row.email;
                 const planStatus = planStatusOf(row.activation_expires_at);
+                const adherence = adherenceLabel(row.last_log_at);
 
                 return (
                   <TableRow key={row.member_id}>
                     <TableCell className="py-1">
-                      <span className="text-textPrimary">{name}</span>
-                      {row.display_name && (
-                        <span className="ml-2 text-small text-textSecondary">{row.email}</span>
-                      )}
+                      <div>
+                        <span className="text-textPrimary">{name}</span>
+                        {row.display_name && (
+                          <span className="ml-2 text-small text-textSecondary">{row.email}</span>
+                        )}
+                      </div>
+                      <p className={`text-small ${adherence.stale ? "text-warning" : "text-textSecondary"}`}>
+                        {adherence.text}
+                      </p>
                     </TableCell>
                     {showBranch && (
                       <TableCell className="py-1 text-textSecondary">
