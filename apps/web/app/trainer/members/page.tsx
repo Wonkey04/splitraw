@@ -55,6 +55,7 @@ function TrainerMembersContent() {
         scopeLabel={`Solo de tu sucursal${branchName ? ` (${branchName})` : ""}`}
         initialRoutineFilter={routineParam === "none" ? "without" : ""}
         initialStatusFilter={statusParam === "soon" ? "soon" : ""}
+        detailHrefBase="/trainer/members"
       />
     </div>
   );

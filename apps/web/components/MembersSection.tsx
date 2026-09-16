@@ -119,6 +119,12 @@ export interface MembersSectionProps {
   /** Preseleccionan un filtro al montar (ej. link desde el home del trainer). */
   initialStatusFilter?: StatusFilter;
   initialRoutineFilter?: RoutineFilter;
+  /**
+   * Si se pasa, el nombre del socio linkea a `${detailHrefBase}/<id>`
+   * (drill-down, Feature 2). Sin esto la fila no es clickeable — hoy solo
+   * lo usa el panel del trainer.
+   */
+  detailHrefBase?: string;
 }
 
 // Seccion "Miembros", compartida entre el panel del TRAINER y el del
@@ -132,6 +138,7 @@ export default function MembersSection({
   scopeLabel,
   initialStatusFilter = "",
   initialRoutineFilter = "",
+  detailHrefBase,
 }: MembersSectionProps) {
   const router = useRouter();
 
@@ -360,7 +367,16 @@ export default function MembersSection({
                   <TableRow key={row.member_id}>
                     <TableCell className="py-1">
                       <div>
-                        <span className="text-textPrimary">{name}</span>
+                        {detailHrefBase ? (
+                          <Link
+                            href={`${detailHrefBase}/${row.member_id}`}
+                            className="text-textPrimary hover:text-accent"
+                          >
+                            {name}
+                          </Link>
+                        ) : (
+                          <span className="text-textPrimary">{name}</span>
+                        )}
                         {row.display_name && (
                           <span className="ml-2 text-small text-textSecondary">{row.email}</span>
                         )}
