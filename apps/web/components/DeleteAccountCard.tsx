@@ -25,6 +25,7 @@ export default function DeleteAccountCard() {
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [farewell, setFarewell] = useState(false);
 
   const confirmed = confirmText.trim().toUpperCase() === CONFIRM_WORD;
   const isOwner = profile?.role === "GYM_OWNER";
@@ -46,19 +47,46 @@ export default function DeleteAccountCard() {
       const message = (data as { error?: string } | null)?.error;
 
       if (invokeError || message) {
-        setError(message ?? "No se pudo eliminar la cuenta. Probá de nuevo.");
+        const friendly = message ?? "No se pudo eliminar la cuenta. Probá de nuevo.";
+        setError(friendly);
+        // alert() a propósito, además del texto en pantalla: es el detalle
+        // crudo (status, nombre del error) para debuggear qué está pasando
+        // realmente, no el mensaje lindo que ve un usuario final.
+        window.alert(
+          "Error al eliminar la cuenta:\n\n" +
+            `Mensaje: ${friendly}\n` +
+            `invokeError: ${invokeError ? JSON.stringify(invokeError, null, 2) : "ninguno"}\n` +
+            `data: ${data ? JSON.stringify(data, null, 2) : "ninguno"}`
+        );
         setDeleting(false);
         return;
       }
 
       // La cuenta ya no existe: la sesion que quedo en el navegador tiene que
-      // irse igual, antes de volver a la landing.
+      // irse igual, antes de volver a la landing. El mensaje de despedida se
+      // ve un momento antes de mandarlo, si no el redirect lo tapa.
       await supabase.auth.signOut();
-      router.replace("/");
-    } catch {
-      setError("No se pudo eliminar la cuenta. Revisá tu conexión.");
+      setFarewell(true);
+      setTimeout(() => router.replace("/"), 2200);
+    } catch (err) {
+      const friendly = "No se pudo eliminar la cuenta. Revisá tu conexión.";
+      setError(friendly);
+      window.alert(
+        "Error al eliminar la cuenta:\n\n" +
+          `Mensaje: ${friendly}\n` +
+          `Excepción: ${err instanceof Error ? err.stack ?? err.message : JSON.stringify(err)}`
+      );
       setDeleting(false);
     }
+  }
+
+  if (farewell) {
+    return (
+      <Card className="mt-6 flex flex-col items-center gap-2 text-center">
+        <h2 className="text-h3">Lamentamos que te hayas ido 😢</h2>
+        <p className="text-body text-textSecondary">Tu cuenta se eliminó correctamente. ¡Gracias por haber probado SplitRaw!</p>
+      </Card>
+    );
   }
 
   return (
