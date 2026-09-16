@@ -51,7 +51,11 @@ type PlanStatus = "activo" | "por vencer" | "vencido" | "sin datos";
 // cliente por la misma razón que la búsqueda: con el paginado de 25, filtrar
 // después de traer la página daría páginas de tamaño variable y un total mal
 // contado.
-type StatusFilter = "" | "expired" | "active";
+type StatusFilter = "" | "expired" | "active" | "soon";
+
+// Mismo criterio que StatusFilter: el filtro se resuelve en la RPC
+// (p_has_routine, 0018), no trayendo la página y descartando filas.
+type RoutineFilter = "" | "with" | "without";
 
 const RENEW_DAYS = 30;
 
@@ -92,6 +96,9 @@ export interface MembersSectionProps {
   assignHrefBase: string;
   /** Aclaracion de alcance a la derecha del titulo. */
   scopeLabel?: string | null;
+  /** Preseleccionan un filtro al montar (ej. link desde el home del trainer). */
+  initialStatusFilter?: StatusFilter;
+  initialRoutineFilter?: RoutineFilter;
 }
 
 // Seccion "Miembros", compartida entre el panel del TRAINER y el del
@@ -99,7 +106,13 @@ export interface MembersSectionProps {
 // columna de sucursal. Todo el peso esta en la funcion de Postgres: pagina,
 // busca y trae la rutina actual de cada socio en una sola consulta. Ver 0009
 // (trainer) y 0010 (owner) para por que no es un .select() directo.
-export default function MembersSection({ scope, assignHrefBase, scopeLabel }: MembersSectionProps) {
+export default function MembersSection({
+  scope,
+  assignHrefBase,
+  scopeLabel,
+  initialStatusFilter = "",
+  initialRoutineFilter = "",
+}: MembersSectionProps) {
   const router = useRouter();
 
   const [rows, setRows] = useState<MemberRow[]>([]);
@@ -111,7 +124,8 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
   const [error, setError] = useState<string | null>(null);
 
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatusFilter);
+  const [routineFilter, setRoutineFilter] = useState<RoutineFilter>(initialRoutineFilter);
   const [renewingId, setRenewingId] = useState<string | null>(null);
 
   const showBranch = scope === "org";
@@ -142,6 +156,7 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
         p_limit: PAGE_SIZE,
         p_offset: page * PAGE_SIZE,
         p_status: statusFilter || null,
+        p_has_routine: routineFilter === "with" ? true : routineFilter === "without" ? false : null,
       });
 
       if (rpcError) {
@@ -161,7 +176,7 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
     } finally {
       setLoading(false);
     }
-  }, [scope, search, page, statusFilter]);
+  }, [scope, search, page, statusFilter, routineFilter]);
 
   useEffect(() => {
     loadMembers();
@@ -221,11 +236,12 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
             onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
-        <div className="flex gap-1" role="group" aria-label="Filtrar por estado">
+        <div className="flex gap-1" role="group" aria-label="Filtrar por estado del plan">
           {(
             [
               ["", "Todos"],
               ["expired", "Vencidos"],
+              ["soon", "Vencen esta semana"],
               ["active", "Al día"],
             ] as [StatusFilter, string][]
           ).map(([value, label]) => (
@@ -248,6 +264,33 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
             </button>
           ))}
         </div>
+        <div className="flex gap-1" role="group" aria-label="Filtrar por rutina asignada">
+          {(
+            [
+              ["", "Con y sin rutina"],
+              ["without", "Sin rutina"],
+              ["with", "Con rutina"],
+            ] as [RoutineFilter, string][]
+          ).map(([value, label]) => (
+            <button
+              key={value || "todas"}
+              type="button"
+              aria-pressed={routineFilter === value}
+              onClick={() => {
+                setRoutineFilter(value);
+                setPage(0);
+              }}
+              className={
+                "rounded border px-4 py-2 text-body transition-colors " +
+                (routineFilter === value
+                  ? "border-accent bg-bgTertiary text-textPrimary"
+                  : "border-border text-textSecondary hover:bg-bgTertiary")
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && <p className="text-body text-error">{error}</p>}
@@ -260,11 +303,17 @@ export default function MembersSection({ scope, assignHrefBase, scopeLabel }: Me
             ? `No hay miembros que coincidan con "${search}".`
             : statusFilter === "expired"
               ? "Ningún miembro está vencido."
-              : statusFilter === "active"
-                ? "Ningún miembro tiene el plan al día."
-                : scope === "org"
-                  ? "Todavía no hay miembros en el gimnasio."
-                  : "No hay miembros en tu sucursal."}
+              : statusFilter === "soon"
+                ? "Ningún miembro vence esta semana."
+                : statusFilter === "active"
+                  ? "Ningún miembro tiene el plan al día."
+                  : routineFilter === "without"
+                    ? "Todos los miembros tienen una rutina asignada."
+                    : routineFilter === "with"
+                      ? "Ningún miembro tiene una rutina asignada todavía."
+                      : scope === "org"
+                        ? "Todavía no hay miembros en el gimnasio."
+                        : "No hay miembros en tu sucursal."}
         </p>
       )}
 

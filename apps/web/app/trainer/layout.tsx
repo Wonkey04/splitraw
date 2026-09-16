@@ -8,9 +8,18 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { UserProfileProvider, useUserProfile } from "@/lib/context/UserProfileContext";
 import { Button } from "@/components/ui";
 
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+function NavLink({
+  href,
+  exact = false,
+  children,
+}: {
+  href: string;
+  /** /trainer ahora es el home, no un prefijo de /trainer/routines ni /trainer/members. */
+  exact?: boolean;
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
-  const active = pathname === href || Boolean(pathname?.startsWith(`${href}/`));
+  const active = exact ? pathname === href : pathname === href || Boolean(pathname?.startsWith(`${href}/`));
 
   return (
     <Link
@@ -89,7 +98,9 @@ export default function TrainerLayout({ children }: { children: React.ReactNode 
                 <Link href="/trainer" className="rounded text-h3 text-textPrimary">
                   SplitRaw
                 </Link>
-                <NavLink href="/trainer">Panel</NavLink>
+                <NavLink href="/trainer" exact>Inicio</NavLink>
+                <NavLink href="/trainer/routines">Rutinas</NavLink>
+                <NavLink href="/trainer/members">Miembros</NavLink>
               </div>
               <div className="flex items-center gap-4">
                 <NavLink href="/trainer/profile">Mi perfil</NavLink>
