@@ -1,6 +1,6 @@
 import { HTMLAttributes } from "react";
 
-export type BadgeVariant = "success" | "error" | "warning" | "neutral";
+export type BadgeVariant = "success" | "error" | "warning" | "neutral" | "primary";
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: BadgeVariant;
@@ -15,6 +15,7 @@ const tokenVar: Record<BadgeVariant, string> = {
   error: "var(--error)",
   warning: "var(--warning)",
   neutral: "var(--text-secondary)",
+  primary: "var(--accent)",
 };
 
 export function Badge({ variant = "neutral", className = "", style, ...props }: BadgeProps) {

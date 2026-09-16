@@ -87,8 +87,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <UserProfileProvider>
       <RoleGuard>
-        <div className="min-h-screen bg-bgPrimary">
-          <nav className="border-b border-border bg-bgSecondary px-6 py-4">
+        <div className="min-h-screen bg-bgSecondary">
+          <nav className="border-b border-border bg-bgPrimary px-6 py-4">
             <div className="mx-auto flex max-w-5xl items-center justify-between">
               <div className="flex items-center gap-6">
                 <Link href="/dashboard" className="rounded text-h3 text-textPrimary">

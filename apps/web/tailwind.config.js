@@ -9,6 +9,7 @@ module.exports = {
         bgTertiary: "var(--bg-tertiary)",
         textPrimary: "var(--text-primary)",
         textSecondary: "var(--text-secondary)",
+        textMuted: "var(--text-muted)",
         border: "var(--border)",
         accent: "var(--accent)",
         accentHover: "var(--accent-hover)",

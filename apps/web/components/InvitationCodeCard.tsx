@@ -71,7 +71,7 @@ export default function InvitationCodeCard({
     <Card>
       <div className="mb-4 flex items-center justify-between gap-4">
         <h2 className="text-h3">Código de tu gimnasio</h2>
-        {!canEdit && <Badge variant="neutral">Plan free</Badge>}
+        <Badge variant={canEdit ? "primary" : "neutral"}>{canEdit ? "Plan Pro" : "Plan free"}</Badge>
       </div>
 
       {editing ? (
@@ -109,7 +109,7 @@ export default function InvitationCodeCard({
       ) : (
         <>
           <div className="rounded border border-border bg-bgSecondary p-4">
-            <p className="select-all font-mono text-h1 tracking-[0.15em] text-accent">
+            <p className="select-all font-mono text-[22px] font-bold tracking-[0.15em] text-accent">
               {code}
             </p>
             <p className="mt-2 text-body text-textSecondary">
@@ -120,33 +120,32 @@ export default function InvitationCodeCard({
 
           {error && <p className="mt-2 text-small text-error">{error}</p>}
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button className="flex-1" onClick={handleCopy}>
-              {copied ? "Copiado" : "Copiar"}
+          <div className="mt-4 flex flex-col gap-2">
+            <Button fullWidth onClick={handleCopy}>
+              {copied ? "Copiado" : "Copiar código"}
             </Button>
             <a
               href={whatsappHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 rounded border border-border px-4 py-2 text-center text-body font-medium text-textPrimary transition-colors hover:bg-bgTertiary"
+              className="w-full rounded border border-border px-4 py-2 text-center text-body font-medium text-textPrimary transition-colors hover:bg-bgTertiary"
             >
               Enviar por WhatsApp
             </a>
-            {canEdit && (
-              <Button
-                variant="secondary"
-                className="flex-1"
-                onClick={() => {
-                  setDraft(code);
-                  setEditing(true);
-                }}
-              >
-                Editar
-              </Button>
-            )}
           </div>
 
-          {!canEdit && (
+          {canEdit ? (
+            <button
+              type="button"
+              className="mt-3 text-small font-medium text-accent underline-offset-2 hover:underline"
+              onClick={() => {
+                setDraft(code);
+                setEditing(true);
+              }}
+            >
+              Editar código
+            </button>
+          ) : (
             <p className="mt-4 text-small text-textSecondary">
               Con el plan Pro podés elegir tu propio código.
             </p>
