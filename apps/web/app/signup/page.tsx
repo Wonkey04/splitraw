@@ -92,6 +92,10 @@ export default function SignupPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-bgSecondary p-8">
       <Card className="w-full max-w-[400px]">
+        <Link href="/" className="mb-4 inline-block text-body text-accent hover:text-accentHover">
+          ← Atrás
+        </Link>
+
         <h1 className="mb-2 text-h2">Creá tu cuenta</h1>
         <p className="mb-6 text-body text-textSecondary">
           Paso 1 de 2. Después vas a cargar los datos de tu gimnasio.

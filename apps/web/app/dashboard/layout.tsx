@@ -24,17 +24,31 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
   );
 }
 
-// "/" redirige a /dashboard apenas hay sesión, sin mirar el rol (ver
+// "/" redirige según landingPathForCurrentUser() apenas hay sesión (ver
 // apps/web/app/page.tsx). Si solo redirigiéramos de vuelta a "/" acá,
 // un user_profiles con role != GYM_OWNER (ej. un member de la app mobile)
 // quedaría en un loop infinito. Por eso este guard cierra la sesión antes
 // de mandarlo de vuelta al login.
+//
+// Caso aparte, sin signOut: hay sesión de auth pero NO hay fila en
+// user_profiles todavía. No es "otro rol" — es un dueño que hizo signUp
+// pero nunca terminó create_gym_with_owner() (cerró la pestaña, se le
+// cortó la conexión, etc.). Antes esto caía en el mismo bucket que
+// "rol equivocado" y como profile es null la condición de abajo ni
+// evaluaba profile.role, así que no pasaba nada: la pantalla quedaba en
+// blanco para siempre. La cuenta no está completa hasta que existe
+// organization_id, así que el destino es completar el registro, no el
+// login.
 function RoleGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { profile, loading } = useUserProfile();
 
   useEffect(() => {
-    if (loading || !profile) return;
+    if (loading) return;
+    if (!profile) {
+      router.replace("/create-gym");
+      return;
+    }
     if (profile.role !== "GYM_OWNER") {
       supabase.auth.signOut().then(() => router.replace("/"));
     }

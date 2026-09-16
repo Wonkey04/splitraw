@@ -36,17 +36,23 @@ export default function TrainerHomePage() {
 
     supabase
       .from("branches")
-      .select("name")
+      .select("name, address")
       .eq("id", profile.branch_id)
       .maybeSingle()
-      .then(({ data }) => setBranchName((data as { name: string } | null)?.name ?? null));
+      .then(({ data }) => {
+        const branch = data as { name: string; address: string | null } | null;
+        // Dirección real en vez de "Sucursal {nombre}": branches.name suele
+        // ser literalmente "Sucursal Principal" (default de create-gym), y
+        // anteponerle "Sucursal " mostraba "Sucursal Sucursal Principal".
+        setBranchName(branch ? branch.address?.trim() || branch.name : null);
+      });
   }, [profile, profileLoading]);
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-h1">Panel</h1>
-        {branchName && <p className="mt-1 text-body text-textSecondary">Sucursal {branchName}</p>}
+        {branchName && <p className="mt-1 text-body text-textSecondary">{branchName}</p>}
       </div>
 
       {error && <p className="text-body text-error">{error}</p>}

@@ -9,7 +9,7 @@ interface HomeOverview {
   weeklyRoutineCount: number;
   /** Nombre del gimnasio (organizations.name). */
   gymName: string | null;
-  /** Sucursal del member: "Sucursal Mitre 201" si hay dirección, si no el nombre solo. */
+  /** Dirección real de la sucursal (branches.address); si no hay, el nombre de la sucursal. */
   branchLabel: string | null;
   /** nombre de ejercicio -> grupo muscular, para calcular el foco del día. */
   muscleGroupByExercise: Map<string, string>;
@@ -85,11 +85,14 @@ export function useHomeOverview(member: Member | null): HomeOverview {
 
         setWeeklyRoutineCount(weeklyRes.count ?? 0);
 
-        // "Sucursal {nombre}": el nombre de la sucursal ya es corto (ej.
-        // "Mitre 201"), el prefijo es lo que la distingue del nombre del
-        // gimnasio en la card de "Tu gimnasio".
-        const branch = branchRes.data as { name: string } | null;
-        setBranchLabel(branch ? `Sucursal ${branch.name}` : null);
+        // La dirección real, no "Sucursal {nombre}": branches.name suele ser
+        // literalmente "Sucursal Principal" (el default de create-gym), así
+        // que anteponerle "Sucursal " mostraba "Sucursal Sucursal
+        // Principal". Si todavía no se cargó la dirección (sucursales
+        // creadas antes de que ese campo existiera), se cae al nombre solo
+        // — sin inventar una dirección que no existe.
+        const branch = branchRes.data as { name: string; address: string | null } | null;
+        setBranchLabel(branch ? branch.address?.trim() || branch.name : null);
 
         const org = orgRes.data as { name: string } | null;
         setGymName(org?.name ?? null);
