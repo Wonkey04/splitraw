@@ -12,6 +12,13 @@ import { supabase } from "@/lib/supabase";
  * cuando esa RPC termina — así que el destino es terminar el registro, no
  * el dashboard (que antes quedaba en blanco esperando un profile que nunca
  * iba a llegar).
+ *
+ * Con fila pero organization_id NULL: desde delete_organization_cascade()
+ * (baja de gimnasio) organization_id/branch_id dejan de ser NOT NULL a
+ * propósito — cuando un dueño da de baja su gimnasio, sus entrenadores NO
+ * se borran, quedan con la cuenta viva pero sin organización. Mismo
+ * destino que "sin perfil" no corresponde (el perfil existe, con rol y
+ * todo), así que va a una pantalla propia.
  */
 export async function landingPathForCurrentUser(): Promise<string> {
   const { data: userData } = await supabase.auth.getUser();
@@ -20,10 +27,11 @@ export async function landingPathForCurrentUser(): Promise<string> {
 
   const { data: profile } = await supabase
     .from("user_profiles")
-    .select("role")
+    .select("role, organization_id")
     .eq("id", userId)
     .maybeSingle();
 
   if (!profile) return "/create-gym";
+  if (!profile.organization_id) return "/no-organization";
   return profile.role === "TRAINER" ? "/trainer" : "/dashboard";
 }

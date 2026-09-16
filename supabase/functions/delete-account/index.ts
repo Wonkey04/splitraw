@@ -11,11 +11,16 @@
 // parámetro — se saca del token del que llama. Un body con el uid de otro no
 // tendría ningún efecto porque no se lee.
 //
-// Qué NO hace, a propósito: no borra cuentas de GYM_OWNER. Un owner puede
-// ser el único de una organización con datos de otra gente adentro (socios,
-// rutinas, entrenadores); qué pasa con todo eso es una decisión de producto
-// que todavía no está tomada. Se corta explícito y con mensaje, en vez de
-// borrar a medias.
+// GYM_OWNER: Apple/Google exigen que CUALQUIER cuenta se pueda dar de baja
+// desde la app, así que ya no se puede cortar acá con un mensaje. La
+// decisión de qué pasa con el resto del gimnasio (migración 0023): se borra
+// todo lo que es DEL gimnasio (sucursales, rutinas, historial, invitaciones,
+// código, la organización), pero los entrenadores y socios NO se borran —
+// quedan con la cuenta viva y organization_id/branch_id en NULL. Nadie pidió
+// que se borre su cuenta más que el dueño.
+//
+// ADMIN sigue bloqueado a propósito: dar de baja el gimnasio entero es una
+// decisión que le corresponde al dueño, no a cualquiera con ese rol.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -79,14 +84,31 @@ Deno.serve(async (req: Request) => {
 
   const role = (profile?.role as string | undefined) ?? "MEMBER";
 
-  if (role === "GYM_OWNER" || role === "ADMIN") {
+  if (role === "ADMIN") {
     return json(
       {
         error:
-          "Las cuentas de dueño todavía no se pueden eliminar desde la app: la organización y los datos de tus alumnos dependen de ella. Escribinos y lo resolvemos a mano.",
+          "Las cuentas de administrador todavía no se pueden eliminar desde la app. Escribinos y lo resolvemos a mano.",
       },
       409
     );
+  }
+
+  if (role === "GYM_OWNER" && profile?.organization_id) {
+    // delete_organization_cascade() valida el rol y la organización con la
+    // sesión de quien llama (auth.uid()), no con lo que decida este
+    // servidor — por eso se invoca con callerClient (lleva el JWT del
+    // usuario) y no con admin (service role, sin auth.uid()).
+    const { error: cascadeError } = await callerClient.rpc("delete_organization_cascade", {
+      p_org_id: profile.organization_id,
+    });
+
+    if (cascadeError) {
+      return json(
+        { error: "No se pudo dar de baja el gimnasio: " + cascadeError.message },
+        500
+      );
+    }
   }
 
   if (role === "TRAINER") {

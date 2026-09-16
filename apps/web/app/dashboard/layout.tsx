@@ -49,6 +49,15 @@ function RoleGuard({ children }: { children: React.ReactNode }) {
       router.replace("/create-gym");
       return;
     }
+    // organization_id NULL con perfil y todo: delete_organization_cascade()
+    // (baja de gimnasio) preserva la cuenta del staff pero la desvincula.
+    // No es "cuenta incompleta" (ya tuvo organización) ni "rol equivocado"
+    // (el rol sigue siendo GYM_OWNER si quedó otro admin) — es su propia
+    // pantalla.
+    if (!profile.organization_id) {
+      router.replace("/no-organization");
+      return;
+    }
     if (profile.role !== "GYM_OWNER") {
       supabase.auth.signOut().then(() => router.replace("/"));
     }
@@ -62,7 +71,7 @@ function RoleGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!profile || profile.role !== "GYM_OWNER") {
+  if (!profile || !profile.organization_id || profile.role !== "GYM_OWNER") {
     return null;
   }
 

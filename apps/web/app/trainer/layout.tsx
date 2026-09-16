@@ -41,6 +41,13 @@ function TrainerGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (loading || !profile) return;
+    // El gimnasio del trainer se dio de baja (delete_organization_cascade):
+    // su cuenta sigue viva pero sin organización. No se le cierra la
+    // sesión — no hizo nada mal — se lo manda a una pantalla que lo explica.
+    if (!profile.organization_id) {
+      router.replace("/no-organization");
+      return;
+    }
     if (profile.role !== "TRAINER") {
       supabase.auth.signOut().then(() => router.replace("/"));
     }
@@ -54,7 +61,7 @@ function TrainerGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!profile || profile.role !== "TRAINER") {
+  if (!profile || !profile.organization_id || profile.role !== "TRAINER") {
     return null;
   }
 

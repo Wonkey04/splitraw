@@ -1232,3 +1232,80 @@ estar roto (ver la entrada del código), invalidaba de golpe todos los códigos
 ya repartidos sin decirle al dueño que eso era lo que hacía. En Pro se
 reemplaza por editar, que es la operación que el dueño realmente quiere.
 >>>>>>> b8360d3e2fc43eeecc0505236a9774f264ef0eba
+
+---
+
+## [2026-09-16] Baja de gimnasio: el GYM_OWNER también tiene que poder eliminar su cuenta
+
+**Contexto:** Apple/Google exigen que cualquier cuenta se pueda dar de baja
+desde la app. La Edge Function `delete-account` (que además nunca había sido
+deployada — ver más abajo) cortaba explícito para GYM_OWNER y ADMIN: "todavía
+no se pueden eliminar desde la app", con la organización y los datos de otra
+gente adentro (socios, entrenadores) como razón. Esa razón dejó de alcanzar:
+la app tiene que aprobarse.
+
+**Decisión:** cuando el GYM_OWNER elimina su cuenta, se borra TODO lo que es
+DEL gimnasio (sucursales, rutinas —templates y asignadas—, historial de
+cargas, invitaciones, código de vinculación, la organización misma), pero los
+ENTRENADORES y SOCIOS de esa organización **no se borran**. Sus cuentas de
+auth y sus perfiles siguen existiendo; solo quedan con `organization_id` /
+`branch_id` en `NULL` — la cuenta viva, sin gimnasio. Nadie pidió que se
+borre su cuenta más que el dueño.
+
+Esto obliga a que `members.organization_id`, `members.branch_id` y
+`user_profiles.organization_id` dejen de ser `NOT NULL` (0023). También
+implica arreglar `organizations.invitation_code_id` → `gym_invitation_codes`
+para que sea `ON DELETE SET NULL`: si no, borrar el código de la baja rompe
+por la FK en sentido contrario.
+
+Nueva función `delete_organization_cascade(p_org_id)`: valida con
+`auth.uid()` (no con lo que mande el cliente) que quien la llama sea
+GYM_OWNER o SUPER_ADMIN **de esa organización puntual**, y borra en el orden
+que exigen las FKs. ADMIN queda afuera a propósito — dar de baja el gimnasio
+entero es una decisión del dueño, no de cualquiera con ese rol.
+
+**Consecuencia sobre `link_member_by_code()`:** un socio (o entrenador) cuyo
+gimnasio se dio de baja puede querer vincularse a uno nuevo después. La
+función hacía un INSERT ciego en `members` y un `ON CONFLICT (id) DO NOTHING`
+en `user_profiles` — las dos cosas rompían con una fila preexistente
+(`members.email` es UNIQUE; el `DO NOTHING` dejaba el perfil viejo intacto
+para siempre). Se pasó a UPDATE-si-existe / INSERT-si-no en ambas tablas. De
+paso: como `members_plan_limit` (0016) es un trigger `BEFORE INSERT`, el
+camino UPDATE no lo dispara solo — se agregó un chequeo manual con
+`assert_plan_limit()` para que un socio que vuelve a vincularse siga contando
+contra el límite del plan del gimnasio nuevo.
+
+**Frente (web):** `user_profiles.organization_id` puede ser `NULL` con perfil
+y rol intactos — un caso que no era "sin perfil" (`/create-gym`) ni "rol
+equivocado" (cerrar sesión). Se agregó `/no-organization`, y los guards de
+`/dashboard` y `/trainer` (más `landingPathForCurrentUser()`) redirigen ahí en
+vez de dejar pasar a un panel sin datos o joder en un loop. Mobile no
+necesitó cambios: `my_member_link()` hace un INNER JOIN contra
+`organizations`, así que un socio con `organization_id NULL` ya devolvía cero
+filas — indistinguible de "nunca se vinculó" para `/link-gym`, gratis.
+
+**Alternativas descartadas:** (a) borrar también las cuentas de entrenadores
+y socios — es mucho más destructivo de lo que Apple/Google piden (ellos
+exigen borrar la cuenta de quien lo pide, no arrastrar cuentas ajenas), y
+nadie más dio ese consentimiento; (b) bloquear el borrado si el gimnasio
+tiene gente adentro — la mayoría de los dueños reales van a tener socios, así
+que en la práctica el botón seguiría sin funcionar y probablemente no pasa
+la revisión igual.
+
+**Hallazgo de paso: `delete-account` nunca había sido deployada.** Al
+revisarla para este cambio, `get_edge_function` devolvía "Function not
+found" — el botón "Eliminar mi cuenta" de web y mobile llamaba a una función
+que no existía en producción. Se deployó por primera vez, junto con dos
+bugs reales encontrados en el camino: el borrado de `exercise_log` (MEMBER)
+filtraba por `members.id` cuando esa tabla usa `user_profiles.id` (no
+borraba nada, lo tapaba un `ON DELETE CASCADE` que actuaba después en la
+misma función); y `exercise_logs`/`body_metrics` del socio y
+`exercise_logs.logged_by` del entrenador no tenían limpieza ninguna, lo que
+iba a romper por FK en cuanto esas tablas (vacías hasta ahora) tuvieran una
+sola fila real.
+
+**Archivos / migraciones afectadas:** `0023_delete_organization_cascade.sql`,
+`supabase/functions/delete-account/index.ts`,
+`apps/web/app/no-organization/page.tsx`, `apps/web/app/dashboard/layout.tsx`,
+`apps/web/app/trainer/layout.tsx`, `apps/web/lib/roleRedirect.ts`,
+`apps/web/components/DeleteAccountCard.tsx`.

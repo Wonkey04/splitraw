@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useUserProfile } from "@/lib/context/UserProfileContext";
 import { Button, Card, Input } from "@/components/ui";
 
 /** Lo que hay que escribir para habilitar el botón. */
@@ -18,6 +19,7 @@ const CONFIRM_WORD = "ELIMINAR";
 // al lado se acepta sin leer, y esto no se puede deshacer.
 export default function DeleteAccountCard() {
   const router = useRouter();
+  const { profile } = useUserProfile();
 
   const [open, setOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
@@ -25,6 +27,7 @@ export default function DeleteAccountCard() {
   const [error, setError] = useState<string | null>(null);
 
   const confirmed = confirmText.trim().toUpperCase() === CONFIRM_WORD;
+  const isOwner = profile?.role === "GYM_OWNER";
 
   async function handleDelete() {
     setError(null);
@@ -63,7 +66,9 @@ export default function DeleteAccountCard() {
       <div>
         <h2 className="text-h3">Eliminar mi cuenta</h2>
         <p className="mt-1 text-body text-textSecondary">
-          Se borran tus datos personales y tu historial. No se puede deshacer.
+          {isOwner
+            ? "Además de tu cuenta, esto da de baja TODO tu gimnasio: sucursales, rutinas, historial e invitaciones. Tus entrenadores y socios no pierden su cuenta, pero quedan sin gimnasio. No se puede deshacer."
+            : "Se borran tus datos personales y tu historial. No se puede deshacer."}
         </p>
       </div>
 
